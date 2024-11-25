@@ -121,5 +121,16 @@ let
 
   eval = var: resolveOrdered rules { } var;
 
+  overridenRules = rules // {
+    "b" = {
+      opcode = "IDENT";
+      args = [ "16076" ];
+    };
+  };
+  evalPart2 = var: resolveOrdered overridenRules { } var;
+
 in
-eval "a"
+{
+  p1 = eval "a";
+  p2 = evalPart2 "a";
+}
