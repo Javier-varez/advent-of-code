@@ -124,7 +124,7 @@ let
   overridenRules = rules // {
     "b" = {
       opcode = "IDENT";
-      args = [ "16076" ];
+      args = [ "${builtins.toString (eval "a")}" ];
     };
   };
   evalPart2 = var: resolveOrdered overridenRules { } var;
