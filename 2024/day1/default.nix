@@ -23,6 +23,14 @@ let
 
   distList = map ({ fst, snd }: abs (fst - snd)) (lib.zipLists leftSorted rightSorted);
 
-  reduced = builtins.foldl' (x: y: x + y) 0 distList;
+  p1 = builtins.foldl' (x: y: x + y) 0 distList;
+
+  accumulate = l: builtins.foldl' (acc: el: acc + el) 0 l;
+
+  eval = n1: n1 * (accumulate (map (n2: if n1 == n2 then 1 else 0) rightList));
+
+  p2 = builtins.foldl' (acc: el: (eval el) + acc) 0 leftList;
 in
-reduced
+{
+  inherit p1 p2;
+}
