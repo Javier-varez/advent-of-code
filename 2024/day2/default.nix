@@ -60,5 +60,25 @@ let
   safeLevels = map (l: isLevelSafe l) data;
   numSafeLevels = lib.count (safe: safe) safeLevels;
 
+  generateOptions =
+    l:
+    let
+      numLevels = lib.count (e: true) l;
+      generateLevel = i: ((lib.sublist 0 i l) ++ (lib.sublist (i + 1) numLevels l));
+      generateLevelRec =
+        i: levels:
+        let
+          newLevels = levels ++ [ (generateLevel i) ];
+        in
+        if i > 0 then (generateLevelRec (i - 1) newLevels) else newLevels;
+    in
+    generateLevelRec (numLevels - 1) [ ];
+
+  safeLevelsWithRemovals = map (l: lib.any (safe: safe) (map (l: isLevelSafe l) (generateOptions l))) data;
+  numSafeLevelsWithRemovals = lib.count (safe: safe) safeLevelsWithRemovals;
+
 in
-numSafeLevels
+{
+  p1 = numSafeLevels;
+  p2 = numSafeLevelsWithRemovals;
+}
