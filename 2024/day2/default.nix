@@ -7,44 +7,30 @@ let
     lib.filter (l: l != "") (lib.splitString "\n" input)
   );
 
-  isIncreasing =
-    l:
+  isMonotonic =
+    increasing: l:
     (lib.foldl'
       (
         { prev, result }:
         cur: {
           prev = cur;
-          result = (cur > prev) && result;
+          result = (if increasing then cur > prev else cur < prev) && result;
         }
       )
       {
-        prev = -1;
+        prev = if increasing then -1 else 100;
         result = true;
       }
       l
     ).result;
 
-  isDecreasing =
-    l:
-    (lib.foldl'
-      (
-        { prev, result }:
-        cur: {
-          prev = cur;
-          result = (cur < prev) && result;
-        }
-      )
-      {
-        prev = 100;
-        result = true;
-      }
-      l
-    ).result;
+  isIncreasing = isMonotonic true;
+  isDecreasing = isMonotonic false;
 
   abs = v: if v < 0 then -v else v;
 
-  minDistance =
-    l:
+  distance =
+    max: l:
     (lib.foldl'
       (
         { prev, result }:
@@ -53,37 +39,20 @@ let
           result =
             let
               distance = abs (cur - prev);
+              condition = if max then distance > result else distance < result;
             in
-            if distance < result then distance else result;
+            if condition then distance else result;
         }
       )
       {
         prev = builtins.head l;
-        result = 100;
+        result = if max then 0 else 100;
       }
       (lib.lists.sublist 1 ((lib.count (e: true) l) - 1) l)
     ).result;
 
-  maxDistance =
-    l:
-    (lib.foldl'
-      (
-        { prev, result }:
-        cur: {
-          prev = cur;
-          result =
-            let
-              distance = abs (cur - prev);
-            in
-            if distance > result then distance else result;
-        }
-      )
-      {
-        prev = builtins.head l;
-        result = 0;
-      }
-      (lib.lists.sublist 1 ((lib.count (e: true) l) - 1) l)
-    ).result;
+  maxDistance = distance true;
+  minDistance = distance false;
 
   isLevelSafe =
     l: ((isIncreasing l) || (isDecreasing l)) && ((minDistance l) >= 1) && ((maxDistance l) <= 3);
