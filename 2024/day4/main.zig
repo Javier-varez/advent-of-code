@@ -81,7 +81,9 @@ pub fn main() void {
     var allocator = gpa.allocator();
     defer {
         const deinit_status = gpa.deinit();
-        if (deinit_status == .leak) {}
+        if (deinit_status == .leak) {
+            std.log.err("You have a memory leak. You're useless.\n", .{});
+        }
     }
 
     const file = std.fs.cwd().openFile("./input.txt", .{}) catch |err| {
