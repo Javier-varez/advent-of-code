@@ -73,7 +73,45 @@ fn solvePart1(data: []const u8) !void {
         }
     }
 
-    std.debug.print("total = {}\n", .{total});
+    std.debug.print("Part 1 total = {}\n", .{total});
+}
+
+fn isMOrS(map: *const Map, r: isize, c: isize) bool {
+    const v = map.at(r, c);
+    return v == 'M' or v == 'S';
+}
+
+fn areEqual(map: *const Map, r: isize, c: isize, r2: isize, c2: isize) bool {
+    const v = map.at(r, c);
+    const v2 = map.at(r2, c2);
+    return v == v2;
+}
+
+fn solvePart2(data: []const u8) !void {
+    const map = try Map.new(data);
+
+    var total: usize = 0;
+
+    var r: isize = 1;
+    while (r < map.height - 1) : (r += 1) {
+        var c: isize = 1;
+        while (c < map.width - 1) : (c += 1) {
+            if (map.at(r, c) != 'A') {
+                continue;
+            }
+
+            if (!isMOrS(&map, r - 1, c - 1) or !isMOrS(&map, r + 1, c + 1) or areEqual(&map, r - 1, c - 1, r + 1, c + 1)) {
+                continue;
+            }
+
+            if (!isMOrS(&map, r + 1, c - 1) or !isMOrS(&map, r - 1, c + 1) or areEqual(&map, r + 1, c - 1, r - 1, c + 1)) {
+                continue;
+            }
+            total += 1;
+        }
+    }
+
+    std.debug.print("Part 2 total = {}\n", .{total});
 }
 
 pub fn main() void {
@@ -100,6 +138,11 @@ pub fn main() void {
 
     solvePart1(input) catch |err| {
         std.log.err("Error solving part 1: {}", .{err});
+        return;
+    };
+
+    solvePart2(input) catch |err| {
+        std.log.err("Error solving part 2: {}", .{err});
         return;
     };
 }
