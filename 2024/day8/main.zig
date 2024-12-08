@@ -67,12 +67,11 @@ const Map = struct {
         self.antennasByFrequency.deinit();
     }
 
-    fn isValidLocation(self: *const Map, location: Location, freq: u8) bool {
-        const inBounds = location.r >= 0 and location.r < self.height and location.c >= 0 and location.c < self.width;
+    fn hasNoFreqConflict(self: *const Map, location: Location, freq: u8) bool {
         if (self.antennasByLocation.get(location)) |antennaFreq| {
-            return antennaFreq != freq and inBounds;
+            return antennaFreq != freq;
         }
-        return inBounds;
+        return true;
     }
 };
 
@@ -134,12 +133,56 @@ fn part1(allocator: std.mem.Allocator, map: *const Map) !void {
             const distanceC = destLoc.c - srcLoc.c;
 
             const firstAntinode = Location{ .r = destLoc.r + distanceR, .c = destLoc.c + distanceC };
-            if (map.isValidLocation(firstAntinode, srcFreq)) {
+            if (firstAntinode.isValid(map) and map.hasNoFreqConflict(firstAntinode, srcFreq)) {
                 try antinodes.put(firstAntinode, {});
             }
             const secondAntinode = Location{ .r = srcLoc.r - distanceR, .c = srcLoc.c - distanceC };
-            if (map.isValidLocation(secondAntinode, destFreq)) {
+            if (secondAntinode.isValid(map) and map.hasNoFreqConflict(secondAntinode, srcFreq)) {
                 try antinodes.put(secondAntinode, {});
+            }
+        }
+    }
+    std.debug.print("Unique antinode locations: {}\n", .{antinodes.count()});
+}
+
+fn part2(allocator: std.mem.Allocator, map: *const Map) !void {
+    var antinodes = std.AutoHashMap(Location, void).init(allocator);
+    defer antinodes.deinit();
+
+    var antennaSrcIter = map.antennasByLocation.iterator();
+    while (antennaSrcIter.next()) |antennaSrc| {
+        var antennaDestIter = map.antennasByLocation.iterator();
+        while (antennaDestIter.next()) |antennaDest| {
+            if (antennaSrc.key_ptr.r == antennaDest.key_ptr.r and antennaSrc.key_ptr.c == antennaDest.key_ptr.c) {
+                // Ignore antennas at the same location
+                continue;
+            }
+
+            const srcFreq = antennaSrc.value_ptr.*;
+            const destFreq = antennaDest.value_ptr.*;
+            if (srcFreq != destFreq) {
+                // The frequencies of the antennas do not match
+                continue;
+            }
+
+            const srcLoc = antennaSrc.key_ptr.*;
+            const destLoc = antennaDest.key_ptr.*;
+
+            const distanceR = destLoc.r - srcLoc.r;
+            const distanceC = destLoc.c - srcLoc.c;
+
+            // antinodes after dest loc
+            var antinodeLoc = Location{ .r = destLoc.r, .c = destLoc.c };
+            while (antinodeLoc.isValid(map)) {
+                try antinodes.put(antinodeLoc, {});
+                antinodeLoc = Location{ .r = antinodeLoc.r + distanceR, .c = antinodeLoc.c + distanceC };
+            }
+
+            // antinodes before src loc
+            antinodeLoc = Location{ .r = srcLoc.r, .c = srcLoc.c };
+            while (antinodeLoc.isValid(map)) {
+                try antinodes.put(antinodeLoc, {});
+                antinodeLoc = Location{ .r = antinodeLoc.r - distanceR, .c = antinodeLoc.c - distanceC };
             }
         }
     }
@@ -162,4 +205,5 @@ pub fn main() !void {
     defer map.deinit();
     logMap(&map);
     try part1(allocator, &map);
+    try part2(allocator, &map);
 }
