@@ -14,12 +14,36 @@ type Line struct {
 	values []int64
 }
 
-func hasSolution(line Line, idx int, acc int64) bool {
+func digits(b int64) int {
+	order := 0
+	for b > 0 {
+		order += 1
+		b /= 10
+	}
+	return order
+}
+
+func pow10(order int) int64 {
+	val := int64(1)
+	for i := 0; i < order; i++ {
+		val *= 10
+	}
+	return val
+}
+
+func concat(a, b int64) int64 {
+	order := digits(b)
+	return a*pow10(order) + b
+}
+
+func hasSolution(line Line, idx int, acc int64, useConcat bool) bool {
 	if idx == len(line.values) {
 		return acc == line.result
 	}
 
-	return hasSolution(line, idx+1, acc+line.values[idx]) || hasSolution(line, idx+1, acc*line.values[idx])
+	return hasSolution(line, idx+1, acc+line.values[idx], useConcat) ||
+		hasSolution(line, idx+1, acc*line.values[idx], useConcat) ||
+		(useConcat && hasSolution(line, idx+1, concat(acc, line.values[idx]), useConcat))
 }
 
 func main() {
@@ -57,11 +81,18 @@ func main() {
 
 	solution := int64(0)
 	for _, eq := range lines {
-		if hasSolution(eq, 1, eq.values[0]) {
+		if hasSolution(eq, 1, eq.values[0], false) {
 			solution += eq.result
 		}
 	}
 
-	fmt.Println("solution ", solution)
+	solution2 := int64(0)
+	for _, eq := range lines {
+		if hasSolution(eq, 1, eq.values[0], true) {
+			solution2 += eq.result
+		}
+	}
+	fmt.Println("solution 1", solution)
+	fmt.Println("solution 2", solution2)
 
 }
