@@ -7,9 +7,9 @@ const Map = struct {
     height: usize,
     stride: usize,
 
-    map: []const u8,
+    map: []u8,
 
-    fn init(data: []const u8) DimError!Map {
+    fn init(data: []u8) DimError!Map {
         const total_length = data.len;
 
         const width = for (data, 0..) |byte, idx| {
@@ -46,6 +46,13 @@ const Map = struct {
         const c: usize = @intCast(l.c);
         return self.map[r * self.stride + c];
     }
+
+    fn atRef(self: *Map, l: Location) *u8 {
+        std.debug.assert(l.isValid(self));
+        const r: usize = @intCast(l.r);
+        const c: usize = @intCast(l.c);
+        return &self.map[r * self.stride + c];
+    }
 };
 
 const Location = struct {
@@ -63,19 +70,19 @@ const Direction = enum(u2) {
     Left = 2,
     Right = 3,
 
-    fn rotate(self: *Direction) void {
-        switch (self.*) {
+    fn rotate(self: Direction) Direction {
+        switch (self) {
             .Up => {
-                self.* = .Right;
+                return .Right;
             },
             .Down => {
-                self.* = .Left;
+                return .Left;
             },
             .Left => {
-                self.* = .Up;
+                return .Up;
             },
             .Right => {
-                self.* = .Down;
+                return .Down;
             },
         }
     }
@@ -86,28 +93,33 @@ const Guard = struct {
     direction: Direction,
 
     fn move(self: *Guard, map: *const Map) bool {
+        const nl = self.nextLocation();
+        if (!nl.isValid(map)) {
+            return false;
+        }
+
+        if (map.at(nl) == '#') {
+            self.direction = self.direction.rotate();
+            return self.move(map);
+        }
+
+        self.location = nl;
+        return true;
+    }
+
+    fn nextLocation(self: *const Guard) Location {
         const deltaC = [4]isize{ 0, 0, -1, 1 };
         const deltaR = [4]isize{ -1, 1, 0, 0 };
 
         const direction = @intFromEnum(self.direction);
-        const nextLocation = Location{ .c = deltaC[direction] + self.location.c, .r = deltaR[direction] + self.location.r };
-        if (!nextLocation.isValid(map)) {
-            return false;
-        }
-
-        if (map.at(nextLocation) == '#') {
-            self.direction.rotate();
-        } else {
-            self.location = nextLocation;
-        }
-
-        return true;
+        return Location{ .c = deltaC[direction] + self.location.c, .r = deltaR[direction] + self.location.r };
     }
 };
 
 fn part1(allocator: std.mem.Allocator, map: *const Map) !void {
     var guard = Guard{ .location = map.findInitialLocation().?, .direction = .Up };
     var visitedLocations = std.AutoHashMap(Location, void).init(allocator);
+    defer visitedLocations.deinit();
 
     while (guard.move(map)) {
         _ = try visitedLocations.getOrPut(guard.location);
@@ -115,11 +127,65 @@ fn part1(allocator: std.mem.Allocator, map: *const Map) !void {
     std.debug.print("Visited positions: {}\n", .{visitedLocations.count()});
 }
 
+fn testLoop(allocator: std.mem.Allocator, map: *const Map) !bool {
+    const initialLoc = map.findInitialLocation().?;
+    var guard = Guard{ .location = initialLoc, .direction = .Up };
+
+    var visitedLocations = std.AutoHashMap(Location, std.AutoHashMap(Direction, void)).init(allocator);
+    defer {
+        var iter = visitedLocations.valueIterator();
+        while (iter.next()) |v| {
+            v.deinit();
+        }
+        visitedLocations.deinit();
+    }
+
+    while (guard.move(map)) {
+        var entry = try visitedLocations.getOrPut(guard.location);
+        if (!entry.found_existing) {
+            entry.value_ptr.* = std.AutoHashMap(Direction, void).init(allocator);
+        }
+
+        if (entry.value_ptr.contains(guard.direction)) {
+            return true;
+        }
+
+        try entry.value_ptr.put(guard.direction, {});
+    }
+
+    return false;
+}
+
+fn part2(allocator: std.mem.Allocator, map: *Map) !void {
+    var count: usize = 0;
+    for (0..map.width) |c| {
+        for (0..map.height) |r| {
+            const loc = Location{ .r = @intCast(r), .c = @intCast(c) };
+            if (map.at(loc) == '.') {
+                map.atRef(loc).* = '#';
+                if (try testLoop(allocator, map)) {
+                    count += 1;
+                }
+                map.atRef(loc).* = '.';
+            }
+        }
+    }
+    std.debug.print("Loops {}\n", .{count});
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
+    defer {
+        const result = gpa.deinit();
+        if (result == .leak) {
+            std.log.err("Memory leak\n", .{});
+        }
+    }
 
     const input = try std.fs.cwd().readFileAlloc(allocator, "realinput.txt", std.math.maxInt(usize));
-    const map = try Map.init(input);
+    defer allocator.free(input);
+    var map = try Map.init(input);
     try part1(allocator, &map);
+    try part2(allocator, &map);
 }
