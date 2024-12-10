@@ -49,7 +49,7 @@ pub fn countTrails(r: usize, c: usize, next_node: u8, map: Map, solutions: *std.
     return count;
 }
 
-pub fn part1(map: Map, allocator: std.mem.Allocator) !void {
+pub fn solve(map: Map, allocator: std.mem.Allocator) !void {
     var num_trails: usize = 0;
     var score: usize = 0;
     for (0..map.height) |r| {
@@ -82,5 +82,5 @@ pub fn main() !void {
     const data = try std.fs.cwd().readFileAlloc(allocator, "./realinput.txt", std.math.maxInt(usize));
     defer allocator.free(data);
 
-    try part1(Map.init(data), allocator);
+    try solve(Map.init(data), allocator);
 }
