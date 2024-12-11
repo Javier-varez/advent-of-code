@@ -25,80 +25,63 @@ fn splitNumber(num: usize, digits: usize) struct { left: usize, right: usize } {
     return .{ .right = right, .left = left };
 }
 
-const List = std.DoublyLinkedList(usize);
-const Node = std.DoublyLinkedList(usize).Node;
+const K = struct {
+    num: usize,
+    blinks: usize,
+};
 
-fn runStep(allocator: std.mem.Allocator, list: *List) !void {
-    var maybe_node = list.first;
-    while (maybe_node) |node| {
-        if (node.data == 0) {
-            node.data = 1;
-            maybe_node = node.next;
-            continue;
-        }
-
-        const num_digits = countDigits(node.data);
-        if (num_digits % 2 == 0) {
-            const split = splitNumber(node.data, num_digits);
-            node.data = split.right;
-
-            const left_node = try allocator.create(Node);
-            left_node.data = split.left;
-            list.insertBefore(node, left_node);
-        } else {
-            node.data *= 2024;
-        }
-
-        maybe_node = node.next;
+fn resolveBlinks(memory: *std.AutoHashMap(K, usize), num: usize, blinks: usize) !usize {
+    if (memory.get(K{ .num = num, .blinks = blinks })) |solution| {
+        return solution;
     }
+
+    if (blinks == 0) {
+        return 1;
+    }
+
+    const num_digits = countDigits(num);
+    var solution: usize = 0;
+    if (num == 0) {
+        solution = try resolveBlinks(memory, 1, blinks - 1);
+    } else if (num_digits % 2 == 0) {
+        const split = splitNumber(num, num_digits);
+        const left = try resolveBlinks(memory, split.left, blinks - 1);
+        const right = try resolveBlinks(memory, split.right, blinks - 1);
+        solution = left + right;
+    } else {
+        solution = try resolveBlinks(memory, num * 2024, blinks - 1);
+    }
+
+    try memory.put(K{ .num = num, .blinks = blinks }, solution);
+    return solution;
 }
 
-fn part1(allocator: std.mem.Allocator, data: []u8) !void {
-    var list = std.DoublyLinkedList(usize){};
-    defer {
-        var maybe_node = list.first;
-        while (maybe_node) |node| {
-            maybe_node = node.next;
-            allocator.destroy(node);
-        }
-    }
+fn resolve(allocator: std.mem.Allocator, data: []u8, blinks: usize) !void {
+    var memory = std.AutoHashMap(K, usize).init(allocator);
+    defer memory.deinit();
 
+    var total: usize = 0;
     {
         var iter = std.mem.split(u8, data, &[1]u8{' '});
         while (iter.next()) |value| {
             const num_string = std.mem.trim(u8, value, &[1]u8{'\n'});
             const num = try std.fmt.parseUnsigned(usize, num_string, 0);
-            var node = try allocator.alloc(Node, 1);
-            node[0].data = num;
-            list.append(&node[0]);
+            total += try resolveBlinks(&memory, num, blinks);
         }
     }
-
-    for (0..25) |_| {
-        try runStep(allocator, &list);
-    }
-
-    var count: usize = 0;
-    {
-        var maybe_node = list.first;
-        while (maybe_node) |node| {
-            count += 1;
-            maybe_node = node.next;
-        }
-    }
-
-    std.log.debug("part 1, {}", .{count});
+    std.log.debug("Solution is {}", .{total});
 }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
     defer {
         _ = gpa.deinit();
     }
-    const allocator = gpa.allocator();
 
     const data = try std.fs.cwd().readFileAlloc(allocator, "realinput.txt", std.math.maxInt(usize));
     defer allocator.free(data);
 
-    try part1(allocator, data);
+    try resolve(allocator, data, 25);
+    try resolve(allocator, data, 75);
 }
