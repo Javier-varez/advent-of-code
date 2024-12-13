@@ -5,7 +5,7 @@ def process(machine):
     lines = machine.splitlines()
     buttonA = [int(x.strip()[2:]) for x in lines[0].split(':')[1].split(',')]
     buttonB = [int(x.strip()[2:]) for x in lines[1].split(':')[1].split(',')]
-    prize = [int(x.strip()[2:]) for x in lines[2].split(':')[1].split(',')]
+    prize = [int(x.strip()[2:]) + 10000000000000 for x in lines[2].split(':')[1].split(',')]
     return buttonA, buttonB, prize
 
 def load():
@@ -25,9 +25,6 @@ for buttonA, buttonB, prize in load():
 
     numB = int(round(num / denom))
     numA = int((prize[0] - buttonB[0] * numB) / buttonA[0])
-
-    if numA > 100 or numB > 100:
-        continue
 
     if (numA * buttonA[0] + numB * buttonB[0]) != prize[0]:
         continue
