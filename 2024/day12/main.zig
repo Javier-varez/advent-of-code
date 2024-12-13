@@ -21,7 +21,12 @@ const Map = struct {
     }
 
     fn at(self: *const Map, l: Location) u8 {
-        return self.data[l.r * self.stride + l.c];
+        if (l.r < 0 or l.r >= self.height or l.c < 0 or l.c >= self.width) {
+            return 0; // Not a char
+        }
+        const r: usize = @intCast(l.r);
+        const c: usize = @intCast(l.c);
+        return self.data[r * self.stride + c];
     }
 };
 
@@ -39,11 +44,12 @@ pub fn main() !void {
 
     const map = Map.init(data);
     try part1(allocator, map);
+    try part2(allocator, map);
 }
 
 const Location = struct {
-    r: usize,
-    c: usize,
+    r: isize,
+    c: isize,
 
     fn up(self: Location) Location {
         return Location{ .r = self.r - 1, .c = self.c };
@@ -115,7 +121,7 @@ fn part1(allocator: std.mem.Allocator, map: Map) !void {
     var total: usize = 0;
     for (0..map.height) |r| {
         for (0..map.width) |c| {
-            const curLoc = Location{ .r = r, .c = c };
+            const curLoc = Location{ .r = @intCast(r), .c = @intCast(c) };
             if (handled.get(curLoc) != null) {
                 continue;
             }
@@ -124,6 +130,92 @@ fn part1(allocator: std.mem.Allocator, map: Map) !void {
             const part = try calcAreaAndPerimeter(&handled, map, curLoc, byte);
             std.log.debug("area for byte {}: {}, perimeter: {}", .{ byte, part.area, part.perimeter });
             total += part.area * part.perimeter;
+        }
+    }
+    std.log.debug("Result is {}", .{total});
+}
+
+fn calcAreaAndSides(handled: *std.AutoHashMap(Location, void), map: Map, curLoc: Location, byte: u8) !struct { area: usize, sides: usize } {
+    try handled.put(curLoc, {});
+
+    var area: usize = 1;
+    var sides: usize = 0;
+
+    if (byte == map.at(curLoc.up()) and byte == map.at(curLoc.right()) and byte != map.at(curLoc.up().right())) {
+        sides += 1;
+    }
+
+    if (byte != map.at(curLoc.up()) and byte != map.at(curLoc.right())) {
+        sides += 1;
+    }
+
+    if (byte == map.at(curLoc.down()) and byte == map.at(curLoc.right()) and byte != map.at(curLoc.down().right())) {
+        sides += 1;
+    }
+
+    if (byte != map.at(curLoc.down()) and byte != map.at(curLoc.right())) {
+        sides += 1;
+    }
+
+    if (byte == map.at(curLoc.down()) and byte == map.at(curLoc.left()) and byte != map.at(curLoc.down().left())) {
+        sides += 1;
+    }
+
+    if (byte != map.at(curLoc.down()) and byte != map.at(curLoc.left())) {
+        sides += 1;
+    }
+
+    if (byte == map.at(curLoc.up()) and byte == map.at(curLoc.left()) and byte != map.at(curLoc.up().left())) {
+        sides += 1;
+    }
+
+    if (byte != map.at(curLoc.up()) and byte != map.at(curLoc.left())) {
+        sides += 1;
+    }
+
+    if (byte == map.at(curLoc.up()) and handled.get(curLoc.up()) == null) {
+        const part = try calcAreaAndSides(handled, map, curLoc.up(), byte);
+        area += part.area;
+        sides += part.sides;
+    }
+
+    if (byte == map.at(curLoc.down()) and handled.get(curLoc.down()) == null) {
+        const part = try calcAreaAndSides(handled, map, curLoc.down(), byte);
+        area += part.area;
+        sides += part.sides;
+    }
+
+    if (byte == map.at(curLoc.left()) and handled.get(curLoc.left()) == null) {
+        const part = try calcAreaAndSides(handled, map, curLoc.left(), byte);
+        area += part.area;
+        sides += part.sides;
+    }
+
+    if (byte == map.at(curLoc.right()) and handled.get(curLoc.right()) == null) {
+        const part = try calcAreaAndSides(handled, map, curLoc.right(), byte);
+        area += part.area;
+        sides += part.sides;
+    }
+
+    return .{ .sides = sides, .area = area };
+}
+
+fn part2(allocator: std.mem.Allocator, map: Map) !void {
+    var handled = std.AutoHashMap(Location, void).init(allocator);
+    defer handled.deinit();
+
+    var total: usize = 0;
+    for (0..map.height) |r| {
+        for (0..map.width) |c| {
+            const curLoc = Location{ .r = @intCast(r), .c = @intCast(c) };
+            if (handled.get(curLoc) != null) {
+                continue;
+            }
+
+            const byte = map.at(curLoc);
+            const part = try calcAreaAndSides(&handled, map, curLoc, byte);
+            std.log.debug("area for byte {}: {}, sides: {}", .{ byte, part.area, part.sides });
+            total += part.area * part.sides;
         }
     }
     std.log.debug("Result is {}", .{total});
