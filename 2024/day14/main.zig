@@ -13,6 +13,7 @@ pub fn main() !void {
     const data = try std.fs.cwd().readFileAlloc(allocator, "realinput.txt", std.math.maxInt(usize));
     defer allocator.free(data);
     try part1(allocator, data);
+    try part2(allocator, data);
 }
 
 const Location = struct {
@@ -113,4 +114,66 @@ pub fn part1(allocator: std.mem.Allocator, data: []const u8) !void {
 
     std.log.debug("Result {},{},{},{}", .{ quads[0], quads[1], quads[2], quads[3] });
     std.log.debug("Result {}", .{quads[0] * quads[1] * quads[2] * quads[3]});
+}
+
+pub fn part2(allocator: std.mem.Allocator, data: []const u8) !void {
+    var robots = try parseRobots(allocator, data);
+    defer robots.deinit();
+
+    var elapsed: usize = 0;
+    while (true) {
+        var quads = [4]usize{ 0, 0, 0, 0 };
+        var robotMap = std.AutoHashMap(Location, void).init(allocator);
+        defer robotMap.deinit();
+
+        for (robots.items) |*robot| {
+            robot.move(1);
+            try robotMap.put(robot.location, {});
+            if (robot.location.x == WIDTH / 2) {
+                continue;
+            }
+            const qx: usize = @intFromBool(robot.location.x > (WIDTH / 2));
+
+            if (robot.location.y == HEIGHT / 2) {
+                continue;
+            }
+            const qy: usize = @intFromBool(robot.location.y > (HEIGHT / 2));
+            const q = 2 * qy + qx;
+
+            quads[q] += 1;
+        }
+
+        for (0..HEIGHT) |y| {
+            for (0..WIDTH) |x| {
+                var c: u8 = ' ';
+                const l = Location{ .x = @intCast(x), .y = @intCast(y) };
+                if (robotMap.get(l) != null) {
+                    c = 'x';
+                }
+                std.debug.print("{c}", .{c});
+            }
+            std.debug.print("\n", .{});
+        }
+
+        elapsed += 1;
+        for (quads) |q| {
+            // I made the gross assumption that the tree will likely mostly form in one of the 4
+            // quadrants. Use that to try to figure out when the entropy drops, then print the time and the tree
+            if (q >= (robots.items.len * 7 / 10)) {
+                for (0..HEIGHT) |y| {
+                    for (0..WIDTH) |x| {
+                        var c: u8 = ' ';
+                        const l = Location{ .x = @intCast(x), .y = @intCast(y) };
+                        if (robotMap.get(l) != null) {
+                            c = 'x';
+                        }
+                        std.debug.print("{c}", .{c});
+                    }
+                    std.debug.print("\n", .{});
+                }
+                std.debug.print("Entropy dropped at time {} seconds\n", .{elapsed});
+                return;
+            }
+        }
+    }
 }
