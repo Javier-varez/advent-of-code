@@ -10,10 +10,10 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    const data = try std.fs.cwd().readFileAlloc(allocator, "input.txt", std.math.maxInt(usize));
+    const data = try std.fs.cwd().readFileAlloc(allocator, "realinput.txt", std.math.maxInt(usize));
     defer allocator.free(data);
 
-    try part1(allocator, data);
+    try part2(allocator, data);
 }
 
 const Location = struct {
@@ -40,12 +40,21 @@ const Map = struct {
         var mapData = std.ArrayList(u8).init(allocator);
         errdefer mapData.deinit();
         for (data) |byte| {
-            try mapData.append(byte);
+            if (byte == '@') {
+                try mapData.append(byte);
+                try mapData.append('.');
+            } else if (byte == 'O') {
+                try mapData.append('[');
+                try mapData.append(']');
+            } else if (byte == '\n') {
+                try mapData.append('\n');
+            } else {
+                try mapData.append(byte);
+                try mapData.append(byte);
+            }
         }
 
-        std.log.debug("map width {}, height {}, stride {}, len {}", .{ width, height, stride, data.len });
-
-        return Map{ .width = width, .height = height, .stride = stride, .data = mapData };
+        return Map{ .width = width * 2, .height = height, .stride = width * 2 + 1, .data = mapData };
     }
 
     fn deinit(self: *Map) void {
@@ -85,14 +94,14 @@ const Map = struct {
                 }
             },
             '^' => {
-                if (l.c > 0) {
+                if (l.r > 0) {
                     return Location{ .r = l.r - 1, .c = l.c };
                 } else {
                     return null;
                 }
             },
             'v' => {
-                if (l.c < self.height - 1) {
+                if (l.r < self.height - 1) {
                     return Location{ .r = l.r + 1, .c = l.c };
                 } else {
                     return null;
@@ -130,29 +139,56 @@ const Input = struct {
     }
 };
 
-fn pushBlock(map: *Map, l: Location, dir: u8) ?Location {
+fn canPushBlock(map: *Map, l: Location, dir: u8) bool {
     const proposed = map.move(dir, l);
     if (proposed == null) {
-        return null;
+        std.log.debug("invalid proposed after {},{} dir {c}", .{ l.r, l.c, dir });
+        return false;
     }
 
     const proposedBlock = map.at(proposed.?);
 
     if (proposedBlock.* == '.') {
-        const curBlock = map.at(l);
-        proposedBlock.* = curBlock.*;
-        curBlock.* = '.';
-        return proposed;
-    } else if (proposedBlock.* == 'O') {
-        const result = pushBlock(map, proposed.?, dir);
-        if (result != null) {
-            const curBlock = map.at(l);
-            proposedBlock.* = curBlock.*;
-            curBlock.* = '.';
-            return proposed;
-        }
+        return true;
+    } else if (proposedBlock.* == '[' and (dir == '^' or dir == 'v')) {
+        var canPush = true;
+        const sibling = map.move('>', proposed.?).?;
+        canPush = canPush and canPushBlock(map, proposed.?, dir);
+        canPush = canPush and canPushBlock(map, sibling, dir);
+        return canPush;
+    } else if (proposedBlock.* == ']' and (dir == '^' or dir == 'v')) {
+        var canPush = true;
+        const sibling = map.move('<', proposed.?).?;
+        canPush = canPush and canPushBlock(map, proposed.?, dir);
+        canPush = canPush and canPushBlock(map, sibling, dir);
+        return canPush;
+    } else if (proposedBlock.* == ']' or proposedBlock.* == '[') {
+        return canPushBlock(map, proposed.?, dir);
     }
-    return null;
+    return false;
+}
+
+fn pushBlock(map: *Map, l: Location, dir: u8) Location {
+    const proposed = map.move(dir, l).?;
+    const proposedBlock = map.at(proposed);
+
+    if (proposedBlock.* == '.') {} else if (proposedBlock.* == '[' and (dir == '^' or dir == 'v')) {
+        const sibling = map.move('>', proposed).?;
+        _ = pushBlock(map, sibling, dir);
+        _ = pushBlock(map, proposed, dir);
+    } else if (proposedBlock.* == ']' and (dir == '^' or dir == 'v')) {
+        const sibling = map.move('<', proposed).?;
+        _ = pushBlock(map, sibling, dir);
+        _ = pushBlock(map, proposed, dir);
+    } else if (proposedBlock.* == '[' or proposedBlock.* == ']') {
+        _ = pushBlock(map, proposed, dir);
+    } else {
+        @panic("pushBlock failed");
+    }
+    const curBlock = map.at(l);
+    proposedBlock.* = curBlock.*;
+    curBlock.* = '.';
+    return proposed;
 }
 
 fn print(map: *Map) void {
@@ -166,7 +202,7 @@ fn print(map: *Map) void {
     }
 }
 
-fn part1(allocator: std.mem.Allocator, data: []u8) !void {
+fn part2(allocator: std.mem.Allocator, data: []u8) !void {
     var input = try Input.init(allocator, data);
     defer input.deinit();
 
@@ -181,10 +217,12 @@ fn part1(allocator: std.mem.Allocator, data: []u8) !void {
 
         std.debug.print("Running instr {c}\n", .{mov});
 
-        if (pushBlock(&input.map, robot, mov)) |l| {
-            robot = l;
+        if (canPushBlock(&input.map, robot, mov)) {
+            // std.debug.print("move approved {c}\n", .{mov});
+            robot = pushBlock(&input.map, robot, mov);
         }
-        print(&input.map);
+        // std.debug.print("after {c}\n", .{mov});
+        // print(&input.map);
     }
 
     var result: usize = 0;
@@ -192,10 +230,10 @@ fn part1(allocator: std.mem.Allocator, data: []u8) !void {
         for (0..input.map.width) |c| {
             const l = Location{ .r = r, .c = c };
             const block = input.map.at(l).*;
-            if (block == 'O') {
+            if (block == '[') {
                 result += 100 * r + c;
             }
         }
     }
-    std.debug.print("part 1 = {}\n", .{result});
+    std.debug.print("part 2 = {}\n", .{result});
 }
