@@ -12,6 +12,10 @@ const MachineState = struct {
         self.instrs.deinit();
         self.out.deinit();
     }
+
+    fn clone(self: *const MachineState) !MachineState {
+        return MachineState{ .a = self.a, .b = self.b, .c = self.c, .pc = self.pc, .instrs = try self.instrs.clone(), .out = try self.out.clone() };
+    }
 };
 
 pub fn parseReg(line: []const u8) usize {
@@ -66,7 +70,11 @@ const Opcode = enum(u3) {
     cdv = 7,
 };
 
-pub fn parseComboOperand(state: *MachineState) usize {
+const ProgramErr = error{
+    invalid_combo_operand,
+};
+
+pub fn parseComboOperand(state: *MachineState) !usize {
     const rawOperand: u3 = state.instrs.items[state.pc];
     state.pc += 1;
 
@@ -74,9 +82,7 @@ pub fn parseComboOperand(state: *MachineState) usize {
         4 => state.a,
         5 => state.b,
         6 => state.c,
-        7 => {
-            @panic("Invalid combo operand");
-        },
+        7 => ProgramErr.invalid_combo_operand,
         else => rawOperand,
     };
 }
@@ -95,18 +101,17 @@ pub fn pow(base: usize, exp: usize) usize {
     return result;
 }
 
-pub fn stepInstr(state: *MachineState) bool {
+pub fn stepInstr(state: *MachineState) !bool {
     if (state.pc >= state.instrs.items.len) {
         return false;
     }
 
     const inst: Opcode = @enumFromInt(state.instrs.items[state.pc]);
-    std.log.debug("Instr: {}, pc {}", .{ inst, state.pc });
     state.pc += 1;
 
     switch (inst) {
         .adv => {
-            const operand = parseComboOperand(state);
+            const operand = try parseComboOperand(state);
             state.a = state.a / pow(2, operand);
         },
         .bxl => {
@@ -114,7 +119,7 @@ pub fn stepInstr(state: *MachineState) bool {
             state.b = state.b ^ operand;
         },
         .bst => {
-            const operand = parseComboOperand(state);
+            const operand = try parseComboOperand(state);
             state.b = operand % 8;
         },
         .jnz => {
@@ -128,21 +133,60 @@ pub fn stepInstr(state: *MachineState) bool {
             state.b = state.b ^ state.c;
         },
         .out => {
-            const operand = parseComboOperand(state);
+            const operand = try parseComboOperand(state);
             state.out.append(operand % 8) catch {
                 @panic("could not append output");
             };
         },
         .bdv => {
-            const operand = parseComboOperand(state);
+            const operand = try parseComboOperand(state);
             state.b = state.a / pow(2, operand);
         },
         .cdv => {
-            const operand = parseComboOperand(state);
+            const operand = try parseComboOperand(state);
             state.c = state.a / pow(2, operand);
         },
     }
     return true;
+}
+
+pub fn tryProgram(machine: *const MachineState, reg_a: usize) std.ArrayList(usize) {
+    var state = machine.clone() catch {
+        @panic("Out of memory");
+    };
+    defer state.deinit();
+
+    state.a = reg_a;
+
+    var step: usize = 1;
+    while (stepInstr(&state) catch {
+        @panic("unhandled instruction");
+    }) {
+        step += 1;
+    }
+
+    return state.out.clone() catch {
+        @panic("Out of memory");
+    };
+}
+
+fn solve_a(part_a: usize, target_idx: usize, state: *const MachineState) ?usize {
+    for (0..8) |option| {
+        const result = tryProgram(state, part_a * 8 + option);
+        defer result.deinit();
+
+        if (result.items[0] == state.instrs.items[target_idx]) {
+            if (target_idx == 0) {
+                return part_a * 8 + option;
+            }
+
+            if (solve_a(part_a * 8 + option, target_idx - 1, state)) |solution| {
+                return solution;
+            }
+        }
+    }
+
+    return null;
 }
 
 pub fn main() !void {
@@ -157,26 +201,15 @@ pub fn main() !void {
     var state = parseInput(allocator, data);
     defer state.deinit();
 
-    std.log.debug("Initial state", .{});
-    std.log.debug("reg a {}", .{state.a});
-    std.log.debug("reg b {}", .{state.b});
-    std.log.debug("reg c {}", .{state.c});
-    for (state.instrs.items) |inst| {
-        std.log.debug("{}", .{inst});
-    }
-    var step: usize = 1;
-    while (stepInstr(&state)) {
-        std.log.debug("Step {}", .{step});
-        std.log.debug("reg a {}", .{state.a});
-        std.log.debug("reg b {}", .{state.b});
-        std.log.debug("reg c {}", .{state.c});
-        step += 1;
-    }
-
-    for (state.out.items, 0..) |byte, idx| {
-        std.debug.print("{}", .{byte});
-        if (idx != state.out.items.len - 1) {
-            std.debug.print(",", .{});
+    if (solve_a(0, state.instrs.items.len - 1, &state)) |a| {
+        const list = tryProgram(&state, a);
+        defer list.deinit();
+        for (list.items, state.instrs.items, 0..) |got, exp, idx| {
+            if (got != exp) {
+                std.debug.print("Results do not match at idx {}: {} vs {}!\n", .{ idx, got, exp });
+                return;
+            }
         }
+        std.debug.print("solution {}\n", .{a});
     }
 }
