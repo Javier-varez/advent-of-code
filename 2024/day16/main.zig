@@ -12,7 +12,7 @@ pub fn main() !void {
     const data = try std.fs.cwd().readFileAlloc(allocator, "realinput.txt", std.math.maxInt(usize));
     defer allocator.free(data);
 
-    try part1(allocator, data);
+    try part1and2(allocator, data);
 }
 
 const Location = struct {
@@ -52,6 +52,17 @@ const Map = struct {
             }
         }
         @panic("Did not find start node");
+    }
+
+    pub fn endNode(self: *const Map) Location {
+        for (self.data, 0..) |byte, idx| {
+            if (byte == 'E') {
+                const r = idx / self.stride;
+                const c = idx % self.stride;
+                return Location{ .r = r, .c = c };
+            }
+        }
+        @panic("Did not find end node");
     }
 
     pub fn move(self: *const Map, dir: Dir, l: Location) ?Location {
@@ -128,86 +139,180 @@ const UP: Dir = Dir{ .r = -1, .c = 0 };
 const DOWN: Dir = Dir{ .r = 1, .c = 0 };
 const LEFT: Dir = Dir{ .r = 0, .c = -1 };
 const RIGHT: Dir = Dir{ .r = 0, .c = 1 };
-const Elem = struct { l: Location, dir: Dir, minCost: usize };
 
-fn lessThan(context: void, l: Elem, r: Elem) std.math.Order {
+const LocAndDir = struct { l: Location, dir: Dir };
+const LocAndDirWithCost = struct {
+    l: Location,
+    dir: Dir,
+    minCost: usize,
+
+    fn locAndDir(self: LocAndDirWithCost) LocAndDir {
+        return LocAndDir{ .l = self.l, .dir = self.dir };
+    }
+};
+
+fn lessThan(context: void, l: LocAndDirWithCost, r: LocAndDirWithCost) std.math.Order {
     _ = context;
     return std.math.order(l.minCost, r.minCost);
 }
 
-const PriorityQueue = std.PriorityQueue(Elem, void, lessThan);
+const PriorityQueue = std.PriorityQueue(LocAndDirWithCost, void, lessThan);
 
 const AlgoState = struct {
     unvisitedNodes: PriorityQueue,
-    visitedNodes: std.AutoHashMap(Location, void),
+    costPerLocAndDir: std.AutoHashMap(LocAndDir, usize),
+    backtrace: std.AutoHashMap(LocAndDir, std.ArrayList(LocAndDir)),
 
     fn init(allocator: std.mem.Allocator) AlgoState {
         const unvisitedNodes = PriorityQueue.init(allocator, {});
-
-        const visitedNodes = std.AutoHashMap(Location, void).init(allocator);
-        return AlgoState{ .unvisitedNodes = unvisitedNodes, .visitedNodes = visitedNodes };
+        const costPerLocAndDir = std.AutoHashMap(LocAndDir, usize).init(allocator);
+        const backtrace = std.AutoHashMap(LocAndDir, std.ArrayList(LocAndDir)).init(allocator);
+        return AlgoState{ .unvisitedNodes = unvisitedNodes, .costPerLocAndDir = costPerLocAndDir, .backtrace = backtrace };
     }
+
     fn deinit(self: *AlgoState) void {
         self.unvisitedNodes.deinit();
-        self.visitedNodes.deinit();
+        self.costPerLocAndDir.deinit();
+        var iter = self.backtrace.valueIterator();
+        while (iter.next()) |elem| {
+            elem.deinit();
+        }
+        self.backtrace.deinit();
     }
 };
 
-fn handleDirection(map: *const Map, state: *AlgoState, dir: Dir, loc: Location, newCost: usize) !void {
-    const maybeNewLoc = map.move(dir, loc);
-    if (maybeNewLoc == null) {
-        return;
-    }
+fn drawAndCountSafeLocations(allocator: std.mem.Allocator, map: *const Map, state: *const AlgoState, endEntry: LocAndDirWithCost) !usize {
+    var visited = std.AutoHashMap(LocAndDir, void).init(allocator);
+    defer visited.deinit();
 
-    const newLoc = maybeNewLoc.?;
-    if (map.at(newLoc) == '#') {
-        return;
-    }
+    var queue = std.ArrayList(LocAndDir).init(allocator);
+    defer queue.deinit();
 
-    if (state.visitedNodes.contains(newLoc)) {
-        // Already visited, no need to re-evaluate min cost
-        return;
-    }
+    try queue.append(endEntry.locAndDir());
 
-    for (state.unvisitedNodes.items, 0..) |*elem, idx| {
-        if (elem.l.r == newLoc.r and elem.l.c == newLoc.c) {
-            if (elem.minCost > newCost) {
-                // Remove the element and insert it again
-                _ = state.unvisitedNodes.removeIndex(idx);
-            } else {
-                // No need to mutate anything
-                return;
+    while (queue.popOrNull()) |cur| {
+        if (visited.contains(cur)) {
+            continue;
+        }
+
+        try visited.put(cur, {});
+
+        if (state.backtrace.get(cur)) |prevEntries| {
+            for (prevEntries.items) |prev| {
+                try queue.append(prev);
             }
         }
     }
 
-    try state.unvisitedNodes.add(Elem{ .l = newLoc, .dir = dir, .minCost = newCost });
+    var visitedOnlyLocations = std.AutoHashMap(Location, void).init(allocator);
+    defer visitedOnlyLocations.deinit();
+
+    var iter = visited.keyIterator();
+    while (iter.next()) |locAndDir| {
+        try visitedOnlyLocations.put(locAndDir.l, {});
+    }
+
+    for (0..map.height) |r| {
+        for (0..map.width) |c| {
+            if (visitedOnlyLocations.contains(Location{ .r = r, .c = c })) {
+                std.debug.print("O", .{});
+            } else {
+                std.debug.print("{c}", .{map.at(Location{ .r = r, .c = c })});
+            }
+        }
+        std.debug.print("\n", .{});
+    }
+    return visitedOnlyLocations.count();
 }
 
-fn part1(allocator: std.mem.Allocator, data: []const u8) !void {
+fn min(maybeCurCost: ?LocAndDirWithCost, newCost: LocAndDirWithCost) LocAndDirWithCost {
+    if (maybeCurCost == null) {
+        return newCost;
+    }
+
+    if (maybeCurCost.?.minCost > newCost.minCost) {
+        return newCost;
+    }
+    return maybeCurCost.?;
+}
+
+fn part1and2(allocator: std.mem.Allocator, data: []const u8) !void {
     const map = Map.init(data);
     var state = AlgoState.init(allocator);
     defer state.deinit();
 
     // initialize the queue with the start node
-    try state.unvisitedNodes.add(Elem{ .l = map.startNode(), .dir = RIGHT, .minCost = 0 });
+    try state.unvisitedNodes.add(LocAndDirWithCost{
+        .l = map.startNode(),
+        .dir = RIGHT,
+        .minCost = 0,
+    });
 
-    const maybeMinCost = while (state.unvisitedNodes.removeOrNull()) |curNode| {
-        // The current node is now visited
-        try state.visitedNodes.put(curNode.l, {});
-
-        if (map.at(curNode.l) == 'E') {
-            break curNode.minCost;
+    while (state.unvisitedNodes.removeOrNull()) |curNode| {
+        if (state.costPerLocAndDir.get(curNode.locAndDir())) |costEntry| {
+            if (curNode.minCost > costEntry) {
+                // This is a higher-cost path
+                continue;
+            }
         }
 
         // Try to move in the same direction first
-        try handleDirection(&map, &state, curNode.dir, curNode.l, curNode.minCost + 1);
-        try handleDirection(&map, &state, curNode.dir.rotateClockwise(), curNode.l, curNode.minCost + 1001);
-        try handleDirection(&map, &state, curNode.dir.rotateCounterClockwise(), curNode.l, curNode.minCost + 1001);
-    } else null;
+        var directions = [3]LocAndDirWithCost{ undefined, undefined, undefined };
+        var locs: usize = 0;
+        if (map.move(curNode.dir, curNode.l)) |newLoc| {
+            directions[locs] = LocAndDirWithCost{ .l = newLoc, .dir = curNode.dir, .minCost = curNode.minCost + 1 };
+            locs += 1;
+        }
+        if (map.move(curNode.dir.rotateClockwise(), curNode.l)) |newLoc| {
+            directions[locs] = LocAndDirWithCost{ .l = newLoc, .dir = curNode.dir.rotateClockwise(), .minCost = curNode.minCost + 1001 };
+            locs += 1;
+        }
+        if (map.move(curNode.dir.rotateCounterClockwise(), curNode.l)) |newLoc| {
+            directions[locs] = LocAndDirWithCost{ .l = newLoc, .dir = curNode.dir.rotateCounterClockwise(), .minCost = curNode.minCost + 1001 };
+            locs += 1;
+        }
+
+        for (directions[0..locs]) |newNode| {
+            if (map.at(newNode.l) == '#') {
+                // Not a valid location
+                continue;
+            }
+
+            const costNode = try state.costPerLocAndDir.getOrPut(newNode.locAndDir());
+            if (costNode.found_existing) {
+                if (costNode.value_ptr.* < newNode.minCost) {
+                    // Not good, too costly
+                    continue;
+                }
+
+                if (costNode.value_ptr.* > newNode.minCost) {
+                    // We found a better way to get to this node
+                    try state.backtrace.getPtr(newNode.locAndDir()).?.resize(0);
+                }
+                try state.backtrace.getPtr(newNode.locAndDir()).?.append(curNode.locAndDir());
+            } else {
+                var bt = std.ArrayList(LocAndDir).init(allocator);
+                try bt.append(curNode.locAndDir());
+                try state.backtrace.put(newNode.locAndDir(), bt);
+            }
+
+            costNode.value_ptr.* = newNode.minCost;
+            try state.unvisitedNodes.add(newNode);
+        }
+    }
+
+    var maybeMinCost: ?LocAndDirWithCost = null;
+    for (&[4]Dir{ DOWN, UP, LEFT, RIGHT }) |dir| {
+        const locAndDir = LocAndDir{ .l = map.endNode(), .dir = dir };
+        if (state.costPerLocAndDir.get(locAndDir)) |costForDir| {
+            const new = min(maybeMinCost, LocAndDirWithCost{ .l = locAndDir.l, .dir = locAndDir.dir, .minCost = costForDir });
+            maybeMinCost = new;
+        }
+    }
 
     if (maybeMinCost) |minCost| {
-        std.debug.print("Min cost is {}", .{minCost});
+        const count = try drawAndCountSafeLocations(allocator, &map, &state, minCost);
+        std.debug.print("Min cost is {}, visited nodes {}\n", .{ minCost.minCost, count });
     } else {
         std.log.err("Did not find any solution", .{});
     }
