@@ -8,31 +8,29 @@ towels = [towel.strip() for towel in lines[0].split(', ')]
 
 patterns = [pattern.strip() for pattern in lines[2:]]
 
-memory = {}
+def join(left, right):
+    newlist = list(left)
+    newlist.extend(right)
+    return tuple(newlist)
 
-def is_possible(pattern):
-    input = tuple(pattern)
+memory = {}
+def possible_arrangements(pattern):
+    input = (tuple(pattern))
     if input in memory:
         return memory[input]
 
     if pattern == '':
-        return True
+        return 1
 
-    for towel in towels:
-        parts = pattern.split(towel)
-        if len(parts) == 1 and parts[0] == pattern:
+    count = 0
+    for i, towel in enumerate(towels):
+        if not pattern.startswith(towel):
             continue
 
-        ok = True
-        for part in parts:
-            ok = ok and is_possible(part)
+        sub = pattern[len(towel):]
+        count += possible_arrangements(sub)
 
-        if ok:
-            memory[input] = ok
-            return ok
+    memory[input] = count
+    return count
 
-    memory[input] = False
-    return False
-
-possible_patterns = [is_possible(pattern) for pattern in patterns]
-print(len([valid for valid in possible_patterns if valid]))
+print(sum(possible_arrangements(p) for p in patterns))
