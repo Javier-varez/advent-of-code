@@ -54,28 +54,42 @@ print(f'cost = {baseline}')
 save_amounts = {}
 more_than_100 = 0
 
+allowed_cheats = 20
+
+viewed = set()
+
 for r in range(0, height):
     for c in range(0, width):
         if map[r][c] == '#':
             continue
 
         # try to cheat from here to all surrounding positions within 2 picoseconds
-        for (nr,nc) in [(r + 1, c + 1), (r + 2, c), (r, c + 2), (r - 1, c + 1)]:
-            if nr < 0 or nc < 0 or nr >= len(map) or nc >= len(map[nr]) or map[nr][nc] == '#':
-                continue
+        for dr in range(0, allowed_cheats + 1):
+            for dc in range(0, allowed_cheats + 1 - dr):
+                if dr == 0 and dc == 0:
+                    continue
 
-            # valid cheat
-            cost_a = cost_map[(r,c)]
-            cost_b = cost_map[(nr,nc)]
+                for nr, nc in [(r + dr, c + dc), (r - dr, c + dc), (r + dr, c - dc), (r - dr, c - dc)]:
+                    if nr < 0 or nc < 0 or nr >= len(map) or nc >= len(map[nr]) or map[nr][nc] == '#':
+                        continue
 
-            saved = abs(cost_a - cost_b) - 2
-            if saved in save_amounts:
-                save_amounts[saved] += 1
-            else:
-                save_amounts[saved] = 1
+                    k = tuple(sorted([(r,c), (nr,nc)]))
+                    if k in viewed:
+                        continue
+                    viewed.add(k)
 
-            if saved >= 100:
-                more_than_100 += 1
+                    # valid cheat
+                    cost_a = cost_map[(r,c)]
+                    cost_b = cost_map[(nr,nc)]
+
+                    saved = abs(cost_a - cost_b) - dr - dc
+                    if saved in save_amounts:
+                        save_amounts[saved] += 1
+                    else:
+                        save_amounts[saved] = 1
+
+                    if saved >= 100:
+                        more_than_100 += 1
 
 for amount, times in save_amounts.items():
     print(f'there are {times} cheats that save {amount} ps')
