@@ -1,7 +1,5 @@
-#![allow(dead_code)]
-
-use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use anyhow::Context;
 use lazy_static::lazy_static;
@@ -24,15 +22,6 @@ impl std::ops::Add for Location {
         Location(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum Keypad {
-    Numeric(Location),
-    Directional(Location),
-}
-
-const NUMERIC_A: Location = Location(3, 2);
-const DIRECTIONAL_A: Location = Location(0, 2);
 
 lazy_static! {
     static ref NUMERIC_KEYS: HashMap<char, Location> = {
@@ -61,42 +50,6 @@ lazy_static! {
     };
 }
 
-fn compute_path(map: &'static HashMap<char, Location>, mut cur_loc: Location, seq: &str) -> String {
-    let mut moves = String::new();
-    for c in seq.chars() {
-        let next_loc = map.get(&c).unwrap();
-        let dr = next_loc.0 - cur_loc.0;
-        let dc = next_loc.1 - cur_loc.1;
-        let abs_dr = if dr < 0 { -dr } else { dr };
-        let abs_dc = if dc < 0 { -dc } else { dc };
-        for _ in 0..abs_dr {
-            moves.push(if dr < 0 { '^' } else { 'v' });
-        }
-        for _ in 0..abs_dc {
-            moves.push(if dc < 0 { '<' } else { '>' });
-        }
-        moves.push('A');
-        cur_loc = *next_loc;
-    }
-    moves
-}
-
-fn move_keypads(keypads: &mut [Keypad], seq: &str) -> usize {
-    let keypad = keypads.first().unwrap();
-    let sub_seq = match keypad {
-        Keypad::Numeric(cur_loc) => compute_path(&NUMERIC_KEYS, *cur_loc, seq),
-        Keypad::Directional(cur_loc) => compute_path(&DIR_KEYS, *cur_loc, seq),
-    };
-
-    println!("sub seq {sub_seq}");
-
-    if keypads.len() > 1 {
-        move_keypads(&mut keypads[1..], &sub_seq)
-    } else {
-        sub_seq.len()
-    }
-}
-
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 enum KeypadType {
     Numeric,
@@ -110,69 +63,6 @@ fn location(c: char, t: KeypadType) -> Location {
     }
 }
 
-#[derive(Clone)]
-struct KeypadState {
-    cost: usize,
-    cur_loc: Location,
-    next_loc: Option<Location>,
-    seq: String,
-    ty: KeypadType,
-    next: Option<(String, BinaryHeap<KeypadState>)>,
-}
-
-impl PartialEq for KeypadState {
-    fn eq(&self, other: &Self) -> bool {
-        return self.cost == other.cost
-            && self.cur_loc == other.cur_loc
-            && self.next_loc == other.next_loc
-            && self.ty == other.ty;
-    }
-}
-
-impl Eq for KeypadState {}
-
-impl PartialOrd for KeypadState {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(<Self as Ord>::cmp(&self, other))
-    }
-}
-
-impl Ord for KeypadState {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.seq.cmp(&other.seq) {
-            std::cmp::Ordering::Equal => other.cost.cmp(&self.cost),
-            o => o,
-        }
-    }
-}
-
-impl KeypadState {
-    fn new(keypads: &[KeypadType]) -> Self {
-        let first_ty = *keypads.first().unwrap();
-
-        let next = if keypads.len() > 1 {
-            let mut heap = BinaryHeap::new();
-            heap.push(Self::new(&keypads[1..]));
-            Some((String::new(), heap))
-        } else {
-            None
-        };
-
-        Self {
-            cost: 0,
-            cur_loc: if first_ty == KeypadType::Numeric {
-                NUMERIC_A
-            } else {
-                DIRECTIONAL_A
-            },
-            next_loc: None,
-            seq: String::new(),
-            ty: first_ty,
-            next,
-        }
-    }
-}
-
 fn is_valid_loc(loc: Location, ty: KeypadType) -> bool {
     match ty {
         KeypadType::Numeric => loc.0 <= 3 && loc.1 <= 2 && loc != Location(3, 0),
@@ -180,118 +70,91 @@ fn is_valid_loc(loc: Location, ty: KeypadType) -> bool {
     }
 }
 
-fn move_keypads_inner(idx: usize, pq: &mut BinaryHeap<KeypadState>, seq: &str) -> usize {
-    while let Some(mut state) = pq.pop() {
-        // for _ in 0..idx {
-        //     print!("  ");
-        // }
-        // println!(
-        //     "{idx} Controlling keypad at {:?}, next {:?}",
-        //     state.cur_loc, state.next_loc
-        // );
+type Seq = String;
 
-        if let Some(next_loc) = state.next_loc {
-            let delta = next_loc - state.cur_loc;
-            if delta == Location(0, 0) {
-                state.next_loc = None;
-                if let Some((next_seq, next_keyp)) = &mut state.next {
-                    let c = 'A';
-                    // for _ in 0..idx {
-                    //     print!("  ");
-                    // }
-                    // println!("{idx} keypad wants press '{c}'",);
-                    next_seq.push(c);
-                    let inner_cost = move_keypads_inner(idx + 1, next_keyp, next_seq);
-                    state.cost = inner_cost;
-                } else {
-                    state.cost = state.seq.len();
-                };
-                pq.push(state);
-                continue;
+lazy_static! {
+// Map from (sequence, num_keypads) => cost
+static ref MEMORY: Mutex<HashMap<(Seq, usize), usize>> = Mutex::new(HashMap::new());
+}
+
+fn compute_sequences(src_loc: Location, dst_loc: Location, ty: KeypadType) -> Vec<Seq> {
+    let mut sequences = vec![];
+
+    fn inner(
+        sequences: &mut Vec<Seq>,
+        seq: &mut String,
+        cur_loc: Location,
+        dst_loc: Location,
+        ty: KeypadType,
+    ) {
+        if cur_loc == dst_loc {
+            let mut new_str = seq.clone();
+            new_str.push('A');
+            sequences.push(new_str);
+            return;
+        }
+
+        let delta = dst_loc - cur_loc;
+
+        if delta.0 != 0 {
+            let next_loc = cur_loc + Location(if delta.0 > 0 { 1 } else { -1 }, 0);
+            if is_valid_loc(next_loc, ty) {
+                seq.push(if delta.0 > 0 { 'v' } else { '^' });
+                inner(sequences, seq, next_loc, dst_loc, ty);
+                seq.pop();
             }
+        }
 
-            // Try moving on the row axis first
-            if delta.0 != 0 {
-                let next_loc = state.cur_loc + Location(if delta.0 > 0 { 1 } else { -1 }, 0);
-                if is_valid_loc(next_loc, state.ty) {
-                    let mut state = state.clone();
-                    state.cur_loc = next_loc;
-                    // Update next keypads and cost
-                    if let Some((next_seq, next_keyp)) = &mut state.next {
-                        let c = if delta.0 > 0 { 'v' } else { '^' };
-                        // for _ in 0..idx {
-                        //     print!("  ");
-                        // }
-                        // println!("{idx} keypad wants to move on rows: Push '{c}'",);
-                        next_seq.push(c);
-                        let inner_cost = move_keypads_inner(idx + 1, next_keyp, next_seq);
-                        state.cost = inner_cost;
-                    } else {
-                        state.cost = state.seq.len();
-                    };
-                    pq.push(state);
-                }
+        if delta.1 != 0 {
+            let next_loc = cur_loc + Location(0, if delta.1 > 0 { 1 } else { -1 });
+            if is_valid_loc(next_loc, ty) {
+                seq.push(if delta.1 > 0 { '>' } else { '<' });
+                inner(sequences, seq, next_loc, dst_loc, ty);
+                seq.pop();
             }
-
-            // Try moving on the column axis now
-            if delta.1 != 0 {
-                let next_loc = state.cur_loc + Location(0, if delta.1 > 0 { 1 } else { -1 });
-                if is_valid_loc(next_loc, state.ty) {
-                    let mut state = state.clone();
-                    state.cur_loc = next_loc;
-                    // Update next keypads and cost
-                    if let Some((next_seq, next_keyp)) = &mut state.next {
-                        let c = if delta.1 > 0 { '>' } else { '<' };
-                        // for _ in 0..idx {
-                        //     print!("  ");
-                        // }
-                        // println!("{idx} keypad wants to move on columns: Push '{c}'",);
-                        next_seq.push(c);
-                        let inner_cost = move_keypads_inner(idx + 1, next_keyp, next_seq);
-                        state.cost = inner_cost;
-                    } else {
-                        state.cost = state.seq.len();
-                    };
-                    pq.push(state);
-                }
-            }
-        } else {
-            if state.seq.len() >= seq.len() {
-                let cost = state.cost;
-                if idx == 0 {
-                    println!("0: {}", &state.seq);
-                    let mut nq = &state.next;
-                    let mut idx = 1;
-                    while let Some((s, ip)) = &nq {
-                        println!("{idx}: {}", s);
-                        idx += 1;
-                        nq = &ip.peek().unwrap().next;
-                    }
-                }
-                pq.push(state);
-                return cost;
-            }
-
-            let cur_char = seq.chars().skip(state.seq.len()).next().unwrap();
-            let next_loc = location(cur_char, state.ty);
-            state.next_loc = Some(next_loc);
-            state.seq.push(cur_char);
-
-            // for _ in 0..idx {
-            //     print!("  ");
-            // }
-            // println!("{idx} next char '{cur_char}', next_loc '{next_loc:?}'",);
-            pq.push(state);
         }
     }
 
-    unreachable!()
+    let mut s = String::new();
+    inner(&mut sequences, &mut s, src_loc, dst_loc, ty);
+    sequences
 }
-fn move_keypads2(keypads: &[KeypadType], seq: &str) -> usize {
-    let mut pq: BinaryHeap<KeypadState> = BinaryHeap::new();
 
-    pq.push(KeypadState::new(keypads));
-    move_keypads_inner(0, &mut pq, seq)
+fn solve_optimal(seq: &str, keypads: &[KeypadType]) -> usize {
+    if keypads.len() == 0 {
+        return seq.len();
+    }
+
+    {
+        let memory = MEMORY.lock().unwrap();
+        if let Some(sol) = memory.get(&(seq.to_owned(), keypads.len())) {
+            return *sol;
+        }
+    }
+
+    let cur_keypad = *keypads.first().unwrap();
+    let mut total_cost = 0;
+
+    let mut cur_loc = location('A', cur_keypad);
+    for c in seq.chars() {
+        // Compute inner sequences for each character
+        let next_loc = location(c, cur_keypad);
+        let seqs = compute_sequences(cur_loc, next_loc, cur_keypad);
+        let cost = seqs
+            .iter()
+            .map(|seq| solve_optimal(seq, &keypads[1..]))
+            .min()
+            .expect("No paths found!");
+        total_cost += cost;
+        cur_loc = next_loc;
+    }
+
+    {
+        let mut memory = MEMORY.lock().unwrap();
+        memory.insert((seq.to_owned(), keypads.len()), total_cost);
+    }
+
+    total_cost
 }
 
 fn main() -> anyhow::Result<()> {
@@ -303,24 +166,61 @@ fn main() -> anyhow::Result<()> {
     let data = std::fs::read(&input_file)?;
     let data = std::str::from_utf8(&data)?;
 
-    // let mut keypads = vec![
-    //     Keypad::Numeric(NUMERIC_A),
-    //     Keypad::Directional(DIRECTIONAL_A),
-    //     Keypad::Directional(DIRECTIONAL_A),
-    // ];
-
     let mut keypads = vec![
         KeypadType::Numeric,
         KeypadType::Directional,
         KeypadType::Directional,
         KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
+        KeypadType::Directional,
     ];
 
+    let mut total = 0;
     for seq in data.lines() {
         println!("handling seq {seq}");
-        let moves = move_keypads2(&mut keypads, seq);
+        let moves = solve_optimal(seq, &mut keypads);
         println!("Optimum move for {seq} is: {moves}");
+        let seq: usize = seq[..3].parse()?;
+        total += moves * seq;
     }
+    println!("total = {total}");
 
     Ok(())
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    pub fn test_compute_sequences() {
+        let seqs = compute_sequences(Location(3, 2), Location(1, 1), KeypadType::Numeric);
+        assert_eq!(seqs, ["^^<A", "^<^A", "<^^A"]);
+
+        let seqs = compute_sequences(Location(2, 0), Location(3, 1), KeypadType::Numeric);
+        assert_eq!(seqs, [">vA"]);
+
+        let seqs = compute_sequences(Location(0, 2), Location(1, 0), KeypadType::Directional);
+        assert_eq!(seqs, ["v<<A", "<v<A"]);
+    }
 }

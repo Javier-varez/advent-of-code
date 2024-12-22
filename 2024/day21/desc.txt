@@ -1,0 +1,12 @@
+789
+456
+123
+ 0A
+
+ ^A
+<v>
+
+0                                         2                9                           A
+<                       A                 ^       A        >      ^      ^      A      v       v     v     A
+v     <     <     A     >   >   ^    A    <A      >A       vA     ^<A    A      >A     v<A     A     A     >^A
+v<A   <A    A     >>^A  vA  A   ^<A  >A
