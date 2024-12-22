@@ -45,27 +45,22 @@ with open(fileName) as f:
 prices = [generate_prices(seed, 2000) for seed in initial_secrets]
 price_deltas = [calc_delta(price_list) for price_list in prices]
 
+buyer_maps = []
 sequences = {}
-for buyer in price_deltas:
+for buyer_prices, buyer_deltas in zip(prices, price_deltas):
+    cur_map = {}
     for i in range(0, 2000-4):
-        seq = tuple(buyer[i:i+4])
+        seq = tuple(buyer_deltas[i:i+4])
         n = sequences.get(seq, 0)
         sequences[seq] = n+1
+        if seq not in cur_map:
+            cur_map[seq] = buyer_prices[i + 4]
+    buyer_maps.append(cur_map)
 
 sequences = [(count, seq) for seq, count in sequences.items()]
 sequences.sort()
 sequences.reverse()
 
-buyer_maps = []
-for buyer_prices, buyer_deltas in zip(prices, price_deltas):
-    cur_map = {}
-    for i in range(0,2000-4):
-        seq = tuple(buyer_deltas[i:i+4])
-        if seq not in cur_map:
-            cur_map[seq] = buyer_prices[i + 4]
-    buyer_maps.append(cur_map)
-
-print(buyer_maps[0])
 current = 0
 for count, seq in sequences:
     best_case = count * 9
