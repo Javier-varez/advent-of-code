@@ -11,8 +11,7 @@ from datetime import date
 parser = argparse.ArgumentParser('aoc', description='helper for advent-of-code')
 
 templates = {
-    'nix': ('default.nix', '''
-#!/usr/bin/env nix-instantiate --strict --eval
+    'nix': ('default.nix', '''#!/usr/bin/env nix-instantiate --strict --eval
 let
   pkgs = import <nixpkgs> { };
   inputTxt = lib.readFile ./input.txt;
@@ -21,8 +20,7 @@ in
   inherit inputTxt;
 }
 '''),
-    'python': ('solution.py', '''
-#!/usr/bin/env python
+    'python': ('solution.py', ''' #!/usr/bin/env python
 
 import sys
 
@@ -32,7 +30,7 @@ if len(sys.argv) <= 1:
 else:
     fileName = sys.argv[1]
 
-with open(sys.argv[1]) as f:
+with open(fileName) as f:
     print(f.readlines())
 '''),
     'zig': ('main.zig', '''
