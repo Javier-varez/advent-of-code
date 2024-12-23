@@ -33,3 +33,25 @@ for a,b in connection_list:
             sets_of_3.add(tuple(cur))
 
 print(len(sets_of_3))
+
+all_interconnected = set()
+def search(cur, req):
+    k = tuple(sorted(list(req)))
+    if k in all_interconnected: return
+    all_interconnected.add(k)
+
+    for n in connections[cur]:
+        # Check if it is already in the required set, in that case we don't need to add it again
+        if n in req: continue
+        # Check if it is not connected to every other node in req
+        if not all(n in connections[o] for o in req): continue
+        copy = req.copy()
+        copy.add(n)
+        search(n, copy)
+
+for n in connections:
+    s = set()
+    s.add(n)
+    search(n, s)
+
+print(",".join(sorted(sorted(all_interconnected, key=len, reverse=True)[0])))
