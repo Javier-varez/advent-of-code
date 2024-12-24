@@ -20,7 +20,7 @@ in
   inherit inputTxt;
 }
 '''),
-    'python': ('solution.py', ''' #!/usr/bin/env python
+    'python': ('solution.py', '''#!/usr/bin/env python
 
 import sys
 
