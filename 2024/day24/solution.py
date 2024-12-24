@@ -24,18 +24,28 @@ for instr in connection_str.splitlines():
     a, instr, b = instr.split(' ')
     connections[target] = (a, instr, b);
 
-def solve(var):
+def solve_rec(var, visited):
     if var in outputs: return outputs[var]
+
+    if var in visited: raise Exception("Circular dependency")
+    visited.add(var)
+
     a, instr, b = connections[var]
-    a = solve(a)
-    b = solve(b)
+    a = solve_rec(a, visited)
+    b = solve_rec(b, visited)
+
+    visited.remove(var)
+
     if instr == 'AND':
         return a & b
     if instr == 'OR':
         return a | b
     if instr == 'XOR':
         return a ^ b
-    raise f"Invalid instruction {instr}"
+    raise Exception(f"Invalid instruction {instr}")
+
+def solve(var):
+    return solve_rec(var, set())
 
 n = 0
 for var in connections:
@@ -45,3 +55,139 @@ for var in connections:
     n |= val << idx;
 
 print(n)
+
+def reset_ins():
+    for var in outputs:
+        outputs[var] = 0
+
+def check_truth_table(xName,yName,prevXName,prevYName,zName):
+    reset_ins()
+    if solve(zName) != 0:
+        # print(f'{xName} (0) + {yName} (0) != {zName} (0)')
+        return False
+    reset_ins()
+    outputs[xName] = 1
+    if solve(zName) != 1:
+        # print(f'{xName} (1) + {yName} (0) != {zName} (1)')
+        return False
+    reset_ins()
+    outputs[yName] = 1
+    if solve(zName) != 1:
+        # print(f'{xName} (0) + {yName} (1) != {zName} (1)')
+        return False
+    reset_ins()
+    outputs[xName] = 1
+    outputs[yName] = 1
+    if solve(zName) != 0:
+        # print(f'{xName} (1) + {yName} (1) == {zName} {solve(zName)}')
+        return False
+
+    if not prevXName or not prevYName: return True
+
+    reset_ins()
+    outputs[prevXName] = 1
+    outputs[prevYName] = 1
+    if solve(zName) != 1:
+        # print(f'{prevXName} (1) + {prevYName} (1) == {zName} {solve(zName)}')
+        return False
+
+    reset_ins()
+    outputs[prevXName] = 1
+    outputs[prevYName] = 1
+    outputs[xName] = 1
+    if solve(zName) != 0:
+        # print(f'{prevXName} (1) + {prevYName} (1) + {xName} (1) == {zName} {solve(zName)}')
+        return False
+
+    reset_ins()
+    outputs[prevXName] = 1
+    outputs[prevYName] = 1
+    outputs[yName] = 1
+    if solve(zName) != 0:
+        # print(f'{prevXName} (1) + {prevYName} (1) + {yName} (1) == {zName} {solve(zName)}')
+        return False
+
+    reset_ins()
+    outputs[prevXName] = 1
+    outputs[prevYName] = 1
+    outputs[xName] = 1
+    outputs[yName] = 1
+    if solve(zName) != 1:
+        # print(f'{prevXName} (1) + {prevYName} (1) + {xName} (1) {yName} (1) == {zName} {solve(zName)}')
+        return False
+
+    return True
+
+verified_rules = set()
+def register_verified_rules_for(zName):
+    if zName in outputs:
+        verified_rules.add(zName)
+        return
+
+    a, _, b = connections[zName]
+    if a not in verified_rules:
+        verified_rules.add(a)
+        register_verified_rules_for(a)
+    if b not in verified_rules:
+        verified_rules.add(b)
+        register_verified_rules_for(b)
+
+def check_error():
+    verified_rules = set()
+    for z in range(0, 45):
+        xName = f'x{z:02}'
+        yName = f'y{z:02}'
+        zName = f'z{z:02}'
+
+        prevXName = None
+        prevYName = None
+        if z != 0:
+            prevXName = f'x{z-1:02}'
+            prevYName = f'y{z-1:02}'
+
+        if not check_truth_table(xName, yName, prevXName, prevYName,zName):
+            # print(f"{zName} is incorrect")
+            return z
+        else:
+            register_verified_rules_for(zName)
+
+    return None
+
+swapped_nodes = set()
+while True:
+    verified_rules = set()
+    errIdx = check_error()
+    if errIdx is None:
+        print('solved')
+        print(f'swapped_nodes {",".join(sorted(swapped_nodes))}')
+        break
+
+    print(f'found first error at {errIdx}')
+
+    fixed = False
+    for swap_a in connections:
+        for swap_b in connections:
+            # Ignore rules we know are correct
+            if swap_a in verified_rules or swap_b in verified_rules or swap_b == swap_a: continue
+            saved_a = connections[swap_a]
+            saved_b = connections[swap_b]
+            connections[swap_a] = saved_b
+            connections[swap_b] = saved_a
+
+            verified_rules = set()
+            try:
+                newIdx = check_error()
+                if newIdx is None or newIdx > errIdx:
+                    swapped_nodes.add(swap_a)
+                    swapped_nodes.add(swap_b)
+                    print(f'found correct swap at {swap_a}, {swap_b}')
+                    fixed = True
+                    break
+            except:
+                pass
+
+            connections[swap_a] = saved_a
+            connections[swap_b] = saved_b
+
+        if fixed:
+            break
