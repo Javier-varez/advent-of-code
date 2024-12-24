@@ -63,23 +63,19 @@ def reset_ins():
 def check_truth_table(xName,yName,prevXName,prevYName,zName):
     reset_ins()
     if solve(zName) != 0:
-        # print(f'{xName} (0) + {yName} (0) != {zName} (0)')
         return False
     reset_ins()
     outputs[xName] = 1
     if solve(zName) != 1:
-        # print(f'{xName} (1) + {yName} (0) != {zName} (1)')
         return False
     reset_ins()
     outputs[yName] = 1
     if solve(zName) != 1:
-        # print(f'{xName} (0) + {yName} (1) != {zName} (1)')
         return False
     reset_ins()
     outputs[xName] = 1
     outputs[yName] = 1
     if solve(zName) != 0:
-        # print(f'{xName} (1) + {yName} (1) == {zName} {solve(zName)}')
         return False
 
     if not prevXName or not prevYName: return True
@@ -88,7 +84,6 @@ def check_truth_table(xName,yName,prevXName,prevYName,zName):
     outputs[prevXName] = 1
     outputs[prevYName] = 1
     if solve(zName) != 1:
-        # print(f'{prevXName} (1) + {prevYName} (1) == {zName} {solve(zName)}')
         return False
 
     reset_ins()
@@ -96,7 +91,6 @@ def check_truth_table(xName,yName,prevXName,prevYName,zName):
     outputs[prevYName] = 1
     outputs[xName] = 1
     if solve(zName) != 0:
-        # print(f'{prevXName} (1) + {prevYName} (1) + {xName} (1) == {zName} {solve(zName)}')
         return False
 
     reset_ins()
@@ -104,7 +98,6 @@ def check_truth_table(xName,yName,prevXName,prevYName,zName):
     outputs[prevYName] = 1
     outputs[yName] = 1
     if solve(zName) != 0:
-        # print(f'{prevXName} (1) + {prevYName} (1) + {yName} (1) == {zName} {solve(zName)}')
         return False
 
     reset_ins()
@@ -113,7 +106,6 @@ def check_truth_table(xName,yName,prevXName,prevYName,zName):
     outputs[xName] = 1
     outputs[yName] = 1
     if solve(zName) != 1:
-        # print(f'{prevXName} (1) + {prevYName} (1) + {xName} (1) {yName} (1) == {zName} {solve(zName)}')
         return False
 
     return True
@@ -132,6 +124,17 @@ def register_verified_rules_for(zName):
         verified_rules.add(b)
         register_verified_rules_for(b)
 
+def collect_unverified_rules(zName, unverified_rules):
+    if zName in outputs:
+        return
+
+    unverified_rules.add(zName)
+    a, _, b = connections[zName]
+    if a not in verified_rules:
+        collect_unverified_rules(a, unverified_rules)
+    if b not in verified_rules:
+        collect_unverified_rules(b, unverified_rules)
+
 def check_error():
     verified_rules = set()
     for z in range(0, 45):
@@ -146,26 +149,26 @@ def check_error():
             prevYName = f'y{z-1:02}'
 
         if not check_truth_table(xName, yName, prevXName, prevYName,zName):
-            # print(f"{zName} is incorrect")
-            return z
+            unverified_rules = set()
+            collect_unverified_rules(zName, unverified_rules)
+            return z, unverified_rules
         else:
             register_verified_rules_for(zName)
 
-    return None
+    return None, None
 
 swapped_nodes = set()
 while True:
-    verified_rules = set()
-    errIdx = check_error()
+    errIdx, unverified_rules = check_error()
     if errIdx is None:
         print('solved')
         print(f'swapped_nodes {",".join(sorted(swapped_nodes))}')
         break
 
-    print(f'found first error at {errIdx}')
+    print(f'found first error at {errIdx}, unverified_rules{unverified_rules}')
 
     fixed = False
-    for swap_a in connections:
+    for swap_a in unverified_rules:
         for swap_b in connections:
             # Ignore rules we know are correct
             if swap_a in verified_rules or swap_b in verified_rules or swap_b == swap_a: continue
@@ -174,9 +177,8 @@ while True:
             connections[swap_a] = saved_b
             connections[swap_b] = saved_a
 
-            verified_rules = set()
             try:
-                newIdx = check_error()
+                newIdx, _ = check_error()
                 if newIdx is None or newIdx > errIdx:
                     swapped_nodes.add(swap_a)
                     swapped_nodes.add(swap_b)
@@ -191,3 +193,4 @@ while True:
 
         if fixed:
             break
+    assert fixed
