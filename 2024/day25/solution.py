@@ -21,12 +21,8 @@ with open(fileName) as f:
 locks = [parse(key_or_lock) for key_or_lock in key_lock_data if key_or_lock.splitlines()[0] == '#####']
 keys = [parse(key_or_lock) for key_or_lock in key_lock_data if key_or_lock.splitlines()[-1] == '#####']
 
-def valid(p):
-    k, l = p
-    return (k + l) <= 5
-
 count = 0
 for key in keys:
     for lock in locks:
-        count += all(map(valid, zip(key, lock)))
+        count += all(k + l <= 5 for k,l in zip(key, lock))
 print(count)
