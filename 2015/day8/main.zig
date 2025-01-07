@@ -1,4 +1,26 @@
+
 const std = @import("std");
+
+fn emulate_encode_str(data: []const u8) usize {
+    var i: usize = 0;
+    var encoded: usize = 0;
+    while (i < data.len) {
+        const char = data[i];
+        i += 1;
+        switch (char) {
+            '"' => {
+                encoded += 2;
+            },
+            '\\' => {
+                encoded += 2;
+            },
+            else => {
+                encoded += 1;
+            },
+        }
+    }
+    return encoded - data.len;
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -13,35 +35,13 @@ pub fn main() !void {
     const data = try std.fs.cwd().readFileAlloc(allocator, "input.txt", std.math.maxInt(usize));
     defer allocator.free(data);
 
-    var i: usize = 0;
-    var c: usize = 0;
-    var u: usize = 0;
-    while (i < data.len) {
-        var char = data[i];
-        i += 1;
-        switch (char) {
-            '"' => {
-                u += 1;
-            },
-            '\n' => {},
-            '\\' => {
-                u += 1;
-                char = data[i];
-                if (char == 'x') {
-                    u += 3;
-                    i += 3;
-                } else {
-                    u += 1;
-                    i += 1;
-                }
-                c += 1;
-            },
-            else => {
-                u += 1;
-                c += 1;
-            },
-        }
+    var iter = std.mem.splitScalar(u8, data, '\n');
+    var result: usize = 0;
+    while (iter.next()) |line| {
+        if (line.len == 0) continue;
+        const diff = emulate_encode_str(line);
+        result += diff + 2;
     }
 
-    std.debug.print("{}", .{u - c});
+    std.debug.print("{}", .{result});
 }
