@@ -1,4 +1,3 @@
-
 const std = @import("std");
 
 fn emulate_encode_str(data: []const u8) usize {
