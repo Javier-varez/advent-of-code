@@ -15,16 +15,14 @@ int main() {
       negative = true;
     }
 
-    long n = strtol(&buffer[1], NULL, 10);
-    n = n % 100;
-    if (negative) {
-      n = -n;
+    const long n = strtol(&buffer[1], NULL, 10);
+    long incr = negative ? -1 : 1;
+
+    for (long i = 0; i < n; i++) {
+      position += incr;
+      position = position % 100;
+      count += position == 0;
     }
-
-    position += n;
-    position = position % 100;
-
-    count += position == 0;
   }
 
   printf("count %ld", count);
