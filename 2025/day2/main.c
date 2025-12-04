@@ -31,11 +31,20 @@ int main() {
         snprintf(data, sizeof(data), "%ld", i);
         const long l = strlen(data);
 
-        if (l % 2 != 0) {
-          continue;
-        }
+        for (long j = 1; j <= l / 2; j++) {
+          bool invalid = true;
 
-        count += (memcmp(&data[0], &data[l / 2], l / 2) == 0) ? i : 0;
+          int pos = 0;
+          while (pos < l - j) {
+            invalid &= memcmp(&data[pos], &data[pos + j], j) == 0;
+            pos += j;
+          }
+
+          if (invalid) {
+            count += invalid ? i : 0;
+            break;
+          }
+        }
       }
     }
   }
