@@ -21,27 +21,47 @@ fn count_adjacent(data: &[Vec<char>], x: usize, y: usize, width: usize, height: 
     result as usize
 }
 
+fn get_removals(data: &[Vec<char>]) -> Vec<(usize, usize)> {
+    let height = data.len();
+    let width = data.first().unwrap().len();
+
+    (0..height)
+        .flat_map(|y| {
+            (0..width)
+                .filter(move |x| {
+                    let x = *x;
+                    if data[y][x] != '@' {
+                        false
+                    } else {
+                        let adj = count_adjacent(data, x, y, width, height);
+                        adj < 4
+                    }
+                })
+                .map(move |x| (x, y))
+        })
+        .collect()
+}
+
 fn main() {
     let file = std::env::args().nth(1).unwrap();
-    let data: Vec<Vec<char>> = std::fs::read_to_string(file)
+    let mut data: Vec<Vec<char>> = std::fs::read_to_string(file)
         .unwrap()
         .lines()
         .map(|line| line.chars().collect())
         .collect();
 
-    let height = data.len();
-    let width = data.first().unwrap().len();
+    let mut total = 0;
+    loop {
+        let removals = get_removals(&data);
+        if removals.is_empty() {
+            break;
+        }
 
-    let total = (0..height).fold(0, |acc, y| {
-        acc + (0..width).fold(0, |acc, x| {
-            if data[y][x] != '@' {
-                acc
-            } else {
-                let adj = count_adjacent(&data, x, y, width, height);
-                let res = if adj < 4 { 1 } else { 0 };
-                res + acc
-            }
+        total += removals.len();
+        removals.into_iter().for_each(|(x, y)| {
+            data[y][x] = '.';
         })
-    });
+    }
+
     println!("total {total}");
 }
