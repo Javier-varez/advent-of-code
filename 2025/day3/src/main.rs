@@ -7,26 +7,34 @@ fn main() {
     let total: usize = data
         .lines()
         .map(|line| {
-            let (skip_cnt, first_digit) = line
-                .chars()
-                .take(line.len() - 1)
-                .enumerate()
-                .max_by(|(_, lhs), (_, rhs)| match lhs.cmp(rhs) {
-                    // There's a small gotcha here. The number can appear multiple times in the
-                    // same line. When several numbers are equal, we need to take the first one,
-                    // which maximizes our chances of finding the largest second number (as we have
-                    // more). To do this, we can Force the algorithm to think that the first number
-                    // is larger when they are really equal. The default behavior of this function
-                    // returns the last largest number.
-                    std::cmp::Ordering::Equal => std::cmp::Ordering::Greater,
-                    a => a,
+            const NUM_DIGITS: usize = 12;
+
+            let mut cur_skip_cnt = 0;
+            let number = (0..NUM_DIGITS)
+                .map(|idx| {
+                    let (skip_cnt, cur_digit) = line
+                        .chars()
+                        .take(line.len() - (NUM_DIGITS - idx - 1))
+                        .skip(cur_skip_cnt)
+                        .enumerate()
+                        .max_by(|(_, lhs), (_, rhs)| match lhs.cmp(rhs) {
+                            // There's a small gotcha here. The number can appear multiple times in the
+                            // same line. When several numbers are equal, we need to take the first one,
+                            // which maximizes our chances of finding the largest second number (as we have
+                            // more). To do this, we can Force the algorithm to think that the first number
+                            // is larger when they are really equal. The default behavior of this function
+                            // returns the last largest number.
+                            std::cmp::Ordering::Equal => std::cmp::Ordering::Greater,
+                            a => a,
+                        })
+                        .unwrap();
+
+                    cur_skip_cnt += skip_cnt + 1;
+                    cur_digit.to_digit(10).unwrap() as usize
                 })
+                .reduce(|acc, val| acc * 10 + val)
                 .unwrap();
-            let first_digit = first_digit.to_digit(10).unwrap();
-            let second_digit = line.chars().skip(skip_cnt + 1).max().unwrap();
-            let second_digit = second_digit.to_digit(10).unwrap();
-            let number = first_digit * 10 + second_digit;
-            number as usize
+            number
         })
         .sum();
 
