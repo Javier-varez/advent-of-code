@@ -42,11 +42,12 @@ fn main() {
         })
         .collect();
 
+    let num_boxes = boxes.len();
+
     let distances = precompute_distances(&boxes);
     let mut groups: Vec<HashSet<usize>> = vec![];
 
-    const NUM_CONNECTIONS: usize = 1000;
-    for ((from, to), _) in distances.iter().take(NUM_CONNECTIONS).cloned() {
+    for ((from, to), _) in distances.iter().cloned() {
         let from_group = groups
             .iter()
             .enumerate()
@@ -78,11 +79,14 @@ fn main() {
                 groups.push(group);
             }
         }
+
+        if groups.len() == 1 && groups[0].len() == num_boxes {
+            println!("found result.");
+
+            println!("From box: {:?}", boxes[from]);
+            println!("To box: {:?}", boxes[to]);
+            println!("Result: {}", boxes[from].0 * boxes[to].0);
+            break;
+        }
     }
-
-    groups.sort_by_key(|v| v.len());
-    groups.reverse();
-
-    let result: usize = groups.iter().take(3).map(|g| g.len()).product();
-    println!("result = {result}");
 }
