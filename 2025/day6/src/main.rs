@@ -2,37 +2,68 @@ fn main() {
     let filename = std::env::args().nth(1).unwrap();
     let data = std::fs::read_to_string(filename).unwrap();
 
-    let mut matrix: Vec<Vec<String>> = data
-        .lines()
-        .map(|l| l.split_whitespace().map(|s| s.to_string()).collect())
-        .collect();
+    let matrix: Vec<String> = data.lines().map(|l| l.to_string()).collect();
 
-    let operations = matrix.last().unwrap().clone();
-    matrix.pop(); //remove operations line
+    let width = matrix[0].len();
 
-    let len = matrix[0].len();
-    let mut iters: Vec<_> = matrix.into_iter().map(|r| r.into_iter()).collect();
+    let mut ops = vec![];
 
-    let matrix: Vec<Vec<usize>> = (0..len)
-        .map(|_| {
-            iters
-                .iter_mut()
-                .map(|iter| iter.next().unwrap().parse().unwrap())
-                .collect()
-        })
-        .collect();
+    let mut last_non_empty_col = 0;
+    (0..width).for_each(|cur_col| {
+        let empty_column = matrix
+            .iter()
+            .all(|row| row.chars().nth(cur_col).unwrap() == ' ');
+        if empty_column {
+            let cur_op: Vec<Vec<char>> = matrix
+                .iter()
+                .map(|row| {
+                    row.chars()
+                        .skip(last_non_empty_col)
+                        .take(cur_col - last_non_empty_col)
+                        .collect::<Vec<char>>()
+                })
+                .collect();
+            ops.push(cur_op);
 
-    let result = operations
+            last_non_empty_col = cur_col + 1;
+        }
+    });
+
+    if last_non_empty_col != width {
+        let cur_op: Vec<Vec<char>> = matrix
+            .iter()
+            .map(|row| {
+                row.chars()
+                    .skip(last_non_empty_col)
+                    .take(width - last_non_empty_col)
+                    .collect::<Vec<char>>()
+            })
+            .collect();
+        ops.push(cur_op);
+    }
+
+    let result: usize = ops
         .iter()
-        .zip(matrix.iter())
-        .fold(0, |acc, (op, data)| {
-            let result: usize = if op == "+" {
-                data.iter().sum()
-            } else {
-                data.iter().product()
-            };
-            acc + result
-        });
+        .map(|op| {
+            let width = op[0].len();
+            let height = op.len() - 1;
 
-    println!("result {result}");
+            let operands: Vec<usize> = (0..width)
+                .map(|col| {
+                    let number: String = op.iter().take(height).map(|row| row[col]).collect();
+                    number.trim().parse().unwrap()
+                })
+                .collect();
+
+            let op = op[height].first().unwrap();
+
+            let result: usize = if *op == '*' {
+                operands.iter().product()
+            } else {
+                operands.iter().sum()
+            };
+            result
+        })
+        .sum();
+    println!("Result is {result}");
 }
