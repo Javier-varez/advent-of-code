@@ -1,33 +1,35 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 fn simulate_and_get_splits(
     map: &[Vec<char>],
     (row, col): (isize, isize),
-    splits: &mut HashSet<(isize, isize)>,
-) {
+    solutions: &mut HashMap<(isize, isize), usize>,
+) -> usize {
     let width = map[0].len() as isize;
     let height = map.len() as isize;
 
-    if row < 0 || row >= height {
-        return;
+    if row >= height {
+        return 1;
     }
 
     if col < 0 || col >= width {
-        return;
+        return 0;
     }
 
-    if splits.contains(&(row, col)) {
-        return;
+    if let Some(sol) = solutions.get(&(row, col)) {
+        return *sol;
     }
 
-    if map[row as usize][col as usize] == '^' {
-        splits.insert((row, col));
-
-        simulate_and_get_splits(map, (row, col - 1), splits);
-        simulate_and_get_splits(map, (row, col + 1), splits);
+    let result = if map[row as usize][col as usize] == '^' {
+        let left = simulate_and_get_splits(map, (row, col - 1), solutions);
+        let right = simulate_and_get_splits(map, (row, col + 1), solutions);
+        left + right
     } else {
-        simulate_and_get_splits(map, (row + 1, col), splits)
-    }
+        simulate_and_get_splits(map, (row + 1, col), solutions)
+    };
+
+    solutions.insert((row, col), result);
+    result
 }
 
 fn main() {
@@ -48,8 +50,8 @@ fn main() {
         })
         .unwrap();
 
-    let mut splits = HashSet::new();
-    simulate_and_get_splits(&data, start, &mut splits);
+    let mut solutions = HashMap::new();
+    let timelines = simulate_and_get_splits(&data, start, &mut solutions);
 
-    println!("splits = {}", splits.len());
+    println!("timelines = {timelines}");
 }
