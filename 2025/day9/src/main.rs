@@ -1,79 +1,55 @@
-fn area(((x1, y1), (x2, y2)): ((usize, usize), (usize, usize))) -> usize {
-    let width = ((x1 as isize) - (x2 as isize)).abs() + 1;
-    let height = ((y1 as isize) - (y2 as isize)).abs() + 1;
+fn area((p1, p2): (Point, Point)) -> usize {
+    let width = ((p1.0 as isize) - (p2.0 as isize)).abs() + 1;
+    let height = ((p1.1 as isize) - (p2.1 as isize)).abs() + 1;
     (width * height) as usize
 }
 
-fn inside_perimeter(
-    lines: &[((usize, usize), (usize, usize))],
-    range_x: (usize, usize),
-    range_y: (usize, usize),
-    rect_x: (usize, usize),
-    rect_y: (usize, usize),
-    point: (usize, usize),
-    direction: (isize, isize),
-) -> bool {
-    if point.0 < range_x.0 || point.0 > range_x.1 {
-        return false;
-    }
-    if point.1 < range_y.0 || point.1 > range_y.1 {
-        return false;
+#[derive(Clone, Copy, Debug)]
+struct Point(usize, usize);
+
+impl Point {
+    fn new(x: usize, y: usize) -> Self {
+        Self(x, y)
     }
 
-    let in_perim = lines.iter().any(|(start, end)| {
-        (point.0 >= (start.0.min(end.0)))
-            && (point.0 <= (start.0.max(end.0)))
-            && (point.1 >= (start.1.min(end.1)))
-            && (point.1 <= (start.1.max(end.1)))
-    });
-
-    if in_perim {
-        let inside_rect =
-            point.0 > rect_x.0 && point.0 < rect_x.1 && point.1 > rect_y.0 && point.1 < rect_y.1;
-        return !inside_rect;
+    pub fn min(&self, other: &Self) -> Self {
+        Self(self.0.min(other.0), self.1.min(other.1))
     }
 
-    // Move in the direction
-    let point = (
-        (point.0 as isize + direction.0) as usize,
-        (point.1 as isize + direction.1) as usize,
-    );
-    inside_perimeter(lines, range_x, range_y, rect_x, rect_y, point, direction)
+    pub fn max(&self, other: &Self) -> Self {
+        Self(self.0.max(other.0), self.1.max(other.1))
+    }
+
+    pub fn mid(&self, other: &Self) -> Self {
+        Self(self.0.midpoint(other.0), self.1.midpoint(other.1))
+    }
 }
 
 fn main() {
     let filename = std::env::args().nth(1).unwrap();
-    let data: Vec<(usize, usize)> = std::fs::read_to_string(filename)
+    let data: Vec<Point> = std::fs::read_to_string(filename)
         .unwrap()
         .lines()
         .map(|l| {
             let (x, y) = l.split_once(",").unwrap();
-            (x.parse().unwrap(), y.parse().unwrap())
+            Point::new(x.parse().unwrap(), y.parse().unwrap())
         })
         .collect();
 
-    let max_x = data.iter().map(|(x, _)| *x).max().unwrap();
-    let min_x = data.iter().map(|(x, _)| *x).min().unwrap();
-    let max_y = data.iter().map(|(_, y)| *y).max().unwrap();
-    let min_y = data.iter().map(|(_, y)| *y).min().unwrap();
-
-    let range_x = (min_x, max_x);
-    let range_y = (min_y, max_y);
-
-    let mut options: Vec<((usize, usize), (usize, usize))> = data
+    let mut options: Vec<(Point, Point)> = data
         .iter()
         .enumerate()
-        .flat_map(|(i, (x1, y1))| {
+        .flat_map(|(i, Point(x1, y1))| {
             data.iter()
                 .skip(i + 1)
-                .map(|(x2, y2)| ((*x1, *y1), (*x2, *y2)))
+                .map(|Point(x2, y2)| (Point::new(*x1, *y1), Point::new(*x2, *y2)))
         })
         .collect();
 
     options.sort_by_key(|v| area(*v));
     options.reverse();
 
-    let lines: Vec<((usize, usize), (usize, usize))> = data
+    let lines: Vec<(Point, Point)> = data
         .iter()
         .cloned()
         .zip(data.iter().cloned().cycle().skip(1))
@@ -81,64 +57,45 @@ fn main() {
 
     let real_max = options
         .iter()
-        .find(|((x1, y1), (x2, y2))| {
-            let xmin = x1.min(x2);
-            let xmax = x1.max(x2);
-            let ymin = y1.min(y2);
-            let ymax = y1.max(y2);
-            let any_points_inside = data.iter().any(|(x3, y3)| {
-                let x_in = x3 > xmin && x3 < xmax;
-                let y_in = y3 > ymin && y3 < ymax;
+        .find(|(p1, p2)| {
+            // println!("checking: {p1:?},{p2:?}");
+            let pmin = p1.min(p2);
+            let pmax = p1.max(p2);
+
+            let internal_crossings = lines.iter().any(|(start, end)| {
+                let lmin = start.min(end);
+                let lmax = start.max(end);
+                // println!("\tlmin {lmin:?}, lmax {lmax:?}");
+
+                let x_in = lmin.0 < pmax.0 && lmax.0 > pmin.0;
+                let y_in = lmin.1 < pmax.1 && lmax.1 > pmin.1;
+                // println!("\tx_in {x_in:?}, y_in {y_in:?}");
                 x_in && y_in
             });
 
-            if any_points_inside {
+            if internal_crossings {
                 return false;
             }
 
-            // Check that the middle point is enclosed by the perimeter
-            let x_mid = xmin.midpoint(*xmax);
-            let y_mid = ymin.midpoint(*ymax);
+            // Count crossings via ray tracing from middle to the right
+            let mid = p1.mid(p2);
+            let transitions = lines
+                .iter()
+                .filter(|(start, end)| {
+                    if start.1 == end.1 {
+                        // Horizontal line
+                        return false;
+                    }
 
-            let rect_x = (*xmin, *xmax);
-            let rect_y = (*ymin, *ymax);
-            let res_x_neg = inside_perimeter(
-                &lines,
-                range_x,
-                range_y,
-                rect_x,
-                rect_y,
-                (x_mid, y_mid),
-                (-1, 0),
-            );
-            let res_x_pos = inside_perimeter(
-                &lines,
-                range_x,
-                range_y,
-                rect_x,
-                rect_y,
-                (x_mid, y_mid),
-                (1, 0),
-            );
-            let res_y_neg = inside_perimeter(
-                &lines,
-                range_x,
-                range_y,
-                rect_x,
-                rect_y,
-                (x_mid, y_mid),
-                (0, -1),
-            );
-            let res_y_pos = inside_perimeter(
-                &lines,
-                range_x,
-                range_y,
-                rect_x,
-                rect_y,
-                (x_mid, y_mid),
-                (0, 1),
-            );
-            res_x_neg && res_x_pos && res_y_neg && res_y_pos
+                    let lmin = start.min(end);
+                    let lmax = start.max(end);
+
+                    start.0 > mid.0 && lmin.1 <= mid.1 && lmax.1 >= mid.1
+                })
+                .count();
+
+            // println!("transitions: {transitions}");
+            (transitions % 2) == 1
         })
         .unwrap();
 
