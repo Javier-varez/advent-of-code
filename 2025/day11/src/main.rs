@@ -1,14 +1,31 @@
 use std::collections::HashMap;
 
-fn find_paths(node: &str, map: &HashMap<String, Vec<String>>) -> usize {
-    if node == "out" {
-        return 1;
+fn find_paths(
+    node: &str,
+    dest: &str,
+    fft: bool,
+    dac: bool,
+    map: &HashMap<String, Vec<String>>,
+    mem: &mut HashMap<(String, bool, bool), usize>,
+) -> usize {
+    if node == dest {
+        return if fft && dac { 1 } else { 0 };
     }
 
-    map[node]
+    if let Some(res) = mem.get(&(node.to_string(), fft, dac)) {
+        return *res;
+    }
+
+    let fft = fft | (node == "fft");
+    let dac = dac | (node == "dac");
+
+    let result = map[node]
         .iter()
-        .map(|new_node| find_paths(new_node, map))
-        .sum()
+        .map(|new_node| find_paths(new_node, dest, fft, dac, map, mem))
+        .sum();
+    mem.insert((node.to_string(), fft, dac), result);
+
+    result
 }
 
 fn main() {
@@ -23,7 +40,7 @@ fn main() {
             map.insert(src.to_string(), dest);
         });
 
-    let paths = find_paths("you", &map);
-
-    println!("p1 {paths}");
+    let mut mem = HashMap::new();
+    let svr_to_out = find_paths("svr", "out", false, false, &map, &mut mem);
+    println!("svr_to_out = {svr_to_out}");
 }
